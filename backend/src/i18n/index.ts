@@ -13,6 +13,7 @@ const BACKEND_KEYS = [
   'auth.forbidden',
   'auth.passwordsRequired',
   'auth.passwordTooShort',
+  'auth.passwordTooLong',
   'auth.currentPasswordIncorrect',
   'auth.invalidTheme',
   'auth.invalidLanguage',

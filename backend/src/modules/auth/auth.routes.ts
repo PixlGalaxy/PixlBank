@@ -8,6 +8,7 @@ import { createAuthGuards } from './session.middleware.js';
 import { AuthService, isThemeMode, isThemeSkin, toPublicUser } from './auth.service.js';
 import { logger } from '../../logger.js';
 import { badRequest } from '../../errors.js';
+import { PASSWORD_MAX } from '../users/validation.js';
 import { createRateLimiter, type RateLimiter } from '../../middleware/rate-limit.js';
 import type { MetricsService } from '../admin/metrics.service.js';
 
@@ -47,6 +48,10 @@ export function createAuthRoutes(
     const { usernameOrEmail, password } = req.body as { usernameOrEmail?: unknown; password?: unknown };
     if (typeof usernameOrEmail !== 'string' || typeof password !== 'string' || !usernameOrEmail || !password) {
       return res.status(400).json({ error: t('auth.credentialsRequired') });
+    }
+    // Nothing that long can be a real account; don't spend argon2 time on it.
+    if (usernameOrEmail.length > 254 || password.length > PASSWORD_MAX) {
+      return res.status(401).json({ error: t('auth.invalidCredentials') });
     }
 
     try {
@@ -130,6 +135,9 @@ export function createAuthRoutes(
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ error: t('auth.passwordTooShort') });
+    }
+    if (newPassword.length > PASSWORD_MAX || currentPassword.length > PASSWORD_MAX) {
+      return res.status(400).json({ error: t('auth.passwordTooLong') });
     }
 
     try {

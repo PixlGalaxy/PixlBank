@@ -12,6 +12,13 @@ export function createErrorHandler(t: Translate) {
       return res.status(err.status).json({ error: t(err.key) });
     }
 
+    // Malformed or oversized JSON bodies (body-parser) are the client's fault:
+    // answer 400/413 instead of logging them as server errors.
+    const status = (err as { status?: number; type?: string }).status;
+    if (status === 400 || status === 413) {
+      return res.status(status).json({ error: t('error.invalidInput') });
+    }
+
     logger.error('Unhandled request error', err);
     return res.status(500).json({ error: t('error.internal') });
   };

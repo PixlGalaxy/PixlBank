@@ -586,5 +586,6 @@
   "score.fRejected": "Receipts rejected by the lender",
   "score.fCompleted": "Loans fully paid off",
   "score.each": "each",
-  "loans.disbursedByLine": "Lent on {date} by"
+  "loans.disbursedByLine": "Lent on {date} by",
+  "auth.passwordTooLong": "Password must be at most 256 characters long"
 }

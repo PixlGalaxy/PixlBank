@@ -586,5 +586,6 @@
   "score.fRejected": "Comprobantes rechazados por el prestamista",
   "score.fCompleted": "Préstamos terminados de pagar",
   "score.each": "c/u",
-  "loans.disbursedByLine": "Prestado el {date} por"
+  "loans.disbursedByLine": "Prestado el {date} por",
+  "auth.passwordTooLong": "La contraseña puede tener como máximo 256 caracteres"
 }
