@@ -1,4 +1,8 @@
 version: 2
+# Minor/patch bumps are grouped into one PR per area and merged automatically
+# by dependabot-auto-merge.yml once the build passes. Every major bump gets its
+# own PR and waits for a manual review — so one breaking major (e.g. a
+# TypeScript release typescript-eslint doesn't support yet) can't block the rest.
 updates:
   - package-ecosystem: "npm"
     directory: "/frontend"
@@ -9,6 +13,9 @@ updates:
       frontend-deps:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "npm"
     directory: "/backend"
@@ -19,6 +26,9 @@ updates:
       backend-deps:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: "docker"
     directory: "/"
