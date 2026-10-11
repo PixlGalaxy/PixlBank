@@ -1,0 +1,25 @@
+import { fileURLToPath } from 'node:url'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+// Locales are shared with the backend, which owns them.
+const localesDir = fileURLToPath(new URL('../backend/locales', import.meta.url))
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: { '@locales': localesDir },
+  },
+  server: {
+    // Locales live outside the Vite root.
+    fs: { allow: ['..'] },
+    proxy: {
+      '/backend': {
+        target: `http://localhost:${process.env.VITE_BACKEND_PORT || 4000}`,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/backend/, ''),
+      },
+    },
+  },
+})

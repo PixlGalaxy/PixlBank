@@ -1,0 +1,15 @@
+services:
+  pixlbank:
+    build: .
+    image: pixlbank:latest
+    container_name: pixlbank
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PORT_HTTP:-8080}:80"
+    volumes:
+      # Database, avatars and every payment receipt.
+      - ./data:/data
+    # Lets OLLAMA_URL=http://host.docker.internal:11434 reach an Ollama running on the host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

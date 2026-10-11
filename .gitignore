@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+
+# Builds
+dist/
+
+WebinCloud
+/data/*
+!/data/.gitkeep
+
+*.log
+npm-debug.log*
+
+.env
+.env.local
+.env.*.local
+
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude
+.DS_Store
+Thumbs.db

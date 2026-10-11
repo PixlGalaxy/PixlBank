@@ -1,0 +1,30 @@
+{
+  "name": "pixlbank-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=../.env --include ./locales/*.json --include ../.env src/index.ts",
+    "build": "tsc && node scripts/copy-assets.mjs",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "better-sqlite3": "^13.0.3",
+    "busboy": "^1.6.0",
+    "cookie-parser": "^1.4.6",
+    "express": "^5.2.1",
+    "maxmind": "^5.0.7",
+    "nodemailer": "^7.0.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/busboy": "^1.5.4",
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.7.0",
+    "typescript": "~7.0.2",
+    "@types/nodemailer": "^7.0.1"
+  }
+}
