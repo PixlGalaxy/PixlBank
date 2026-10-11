@@ -11,6 +11,7 @@ import { badRequest, forbidden, type AppError } from '../../errors.js';
 import { SERVE_OPTIONS } from '../../serve-options.js';
 import { toCents } from '../loans/loans.service.js';
 import { RECEIPT_EXT_BY_MIME, type PaymentsService } from './payments.service.js';
+import { sniffImage, uploadResponseHeaders } from '../../image-sniff.js';
 
 const MAX_RECEIPT_BYTES = 10 * 1024 * 1024;
 
@@ -48,7 +49,15 @@ function parseReport(req: Request): Promise<ParsedReport> {
         failure = badRequest('payments.receiptTooLarge');
       });
       stream.on('end', () => {
-        if (!failure) receipt = { buffer: Buffer.concat(chunks), mime: info.mimeType };
+        if (failure) return;
+        const buffer = Buffer.concat(chunks);
+        // Trust the bytes, not the browser: the stored type is what the file really is.
+        const real = sniffImage(buffer);
+        if (!real || !RECEIPT_EXT_BY_MIME[real]) {
+          failure = badRequest('payments.receiptInvalidType');
+          return;
+        }
+        receipt = { buffer, mime: real };
       });
     });
     parser.on('error', reject);
@@ -97,8 +106,8 @@ export function createPaymentsRoutes(
 
   router.get('/:id/receipt', (req: AuthenticatedRequest, res, next) => {
     const { path, mime } = payments.receiptFile(routeParam(req.params.id), req.user!);
-    res.setHeader('Content-Type', mime);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    for (const [name, value] of Object.entries(uploadResponseHeaders(mime))) res.setHeader(name, value);
+    // Browser-only cache (never a shared proxy): receipts are confidential.
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.sendFile(path, SERVE_OPTIONS, (err) => {
       if (err) next(err);

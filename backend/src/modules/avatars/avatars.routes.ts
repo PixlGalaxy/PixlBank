@@ -12,6 +12,7 @@ import { badRequest, notFound } from '../../errors.js';
 import { routeParam } from '../../route-params.js';
 import { SERVE_OPTIONS } from '../../serve-options.js';
 import { AvatarsService, EXT_BY_MIME, MIME_BY_EXT } from './avatars.service.js';
+import { sniffImage, uploadResponseHeaders } from '../../image-sniff.js';
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 
@@ -26,9 +27,14 @@ export function createAvatarsRoutes(db: Db, config: EnvConfig, t: Translate): Ro
 
   router.use(requireAuth);
 
-  // Any signed-in user may fetch any other user's avatar (navbar, admin list, ...).
+  // The lender sees every avatar; a debtor only their own and the lender's —
+  // other debtors are confidential, so they get the same 404 as a missing one.
   router.get('/:userId', (req: AuthenticatedRequest, res, next) => {
     const userId = routeParam(req.params.userId);
+    if (req.user!.role !== 'admin' && userId !== req.user!.id) {
+      const target = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as { role: string } | undefined;
+      if (target?.role !== 'admin') return next(notFound());
+    }
     let filename: string | null;
     try {
       filename = avatars.filenameFor(userId);
@@ -38,8 +44,9 @@ export function createAvatarsRoutes(db: Db, config: EnvConfig, t: Translate): Ro
     if (!filename) return next(notFound());
 
     const ext = filename.split('.').pop() ?? '';
-    res.setHeader('Content-Type', MIME_BY_EXT[ext] ?? 'application/octet-stream');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    for (const [name, value] of Object.entries(uploadResponseHeaders(MIME_BY_EXT[ext] ?? 'application/octet-stream'))) {
+      res.setHeader(name, value);
+    }
     // Revalidate every time: the client cache-busts with ?v=<updated_at> instead.
     res.setHeader('Cache-Control', 'no-cache');
     res.sendFile(avatars.absolutePath(filename), SERVE_OPTIONS, (err) => {
@@ -80,6 +87,15 @@ export function createAvatarsRoutes(db: Db, config: EnvConfig, t: Translate): Ro
       write = pipeline(stream, createWriteStream(partial))
         .then(async () => {
           if (truncated) throw failure;
+          // The declared type is only a hint; the bytes must agree with it.
+          const handle = await fs.open(partial, 'r');
+          const header = Buffer.alloc(16);
+          try {
+            await handle.read(header, 0, 16, 0);
+          } finally {
+            await handle.close();
+          }
+          if (sniffImage(header) !== info.mimeType) throw badRequest('avatars.invalidType');
           await fs.rename(partial, avatars.absolutePath(filename));
         })
         .catch((err) => {

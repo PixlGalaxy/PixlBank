@@ -61,6 +61,12 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
   app.use(createCors(config.CORS_ORIGINS));
   app.use(createCrossSiteGuard(config.CORS_ORIGINS));
   app.use(requestLogger);
+  // Everything the API returns is confidential: no proxy or browser cache keeps
+  // it unless a route opts into a private cache (receipts, avatars).
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
   app.use(createSessionMiddleware(db, config.SESSION_TTL_HOURS));

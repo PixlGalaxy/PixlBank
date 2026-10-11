@@ -9,6 +9,8 @@ import Modal from '../ui/Modal';
 import { btn, errorBox, input, label } from '../ui/styles';
 
 const ACCEPT = 'image/png,image/jpeg,image/webp';
+const ALLOWED_TYPES = ACCEPT.split(',');
+const MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * The debtor reports a payment: amount, date and a picture of the receipt.
@@ -131,8 +133,19 @@ const ReportPaymentModal = ({ loan, onClose, onSent }: { loan: LoanDetail; onClo
             accept={ACCEPT}
             hidden
             onChange={(e) => {
-              setFile(e.target.files?.[0] ?? null);
+              const picked = e.target.files?.[0] ?? null;
               e.target.value = '';
+              // Early, friendly check only — the server verifies the real file bytes.
+              if (picked && !ALLOWED_TYPES.includes(picked.type)) {
+                setError(t('payments.receiptInvalidType'));
+                setFile(null);
+              } else if (picked && picked.size > MAX_BYTES) {
+                setError(t('payments.receiptTooLarge'));
+                setFile(null);
+              } else {
+                setError('');
+                setFile(picked);
+              }
             }}
           />
           <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
