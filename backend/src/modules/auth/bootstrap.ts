@@ -24,7 +24,16 @@ export async function bootstrapAdmin(db: Db, config: EnvConfig): Promise<void> {
       logger.warn('ADMIN_USERNAME / ADMIN_EMAIL are not set in .env; keeping the existing admin account as is.');
       return;
     }
-    throw new Error('ADMIN_USERNAME, ADMIN_EMAIL and ADMIN_PASSWORD must be set in .env to create the admin account.');
+    const missing = [
+      !username && 'ADMIN_USERNAME',
+      !email && 'ADMIN_EMAIL',
+      !password && 'ADMIN_PASSWORD',
+    ].filter(Boolean);
+    throw new Error(
+      `Missing environment variable(s) ${missing.join(', ')} — needed to create the admin account on first boot. ` +
+        'Set them on the container (docker run -e ADMIN_USERNAME=... / Unraid or Portainer: add them as variables; ' +
+        'docker compose: env_file: .env).',
+    );
   }
   if (!USERNAME.test(username)) throw new Error(`ADMIN_USERNAME "${username}" must be 3-32 characters of a-z, 0-9, . _ -`);
   if (!EMAIL.test(email)) throw new Error(`ADMIN_EMAIL "${email}" is not a valid email address`);

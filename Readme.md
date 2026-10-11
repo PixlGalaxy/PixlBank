@@ -56,6 +56,17 @@ cp .env.example .env      # set ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD, T
 docker compose up -d --build
 ```
 
+The `.env` file is **never** copied into the image (it's in `.dockerignore`, so no password ends up in a
+published image); it must reach the container at run time. Without `docker compose`:
+
+```bash
+docker run -d --name pixlbank --env-file .env -p 8080:80 -v "$PWD/data:/data" \
+  --add-host host.docker.internal:host-gateway ghcr.io/pixlgalaxy/pixlbank:latest
+```
+
+In Portainer (or any other UI), add at least `ADMIN_USERNAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` as the
+container's environment variables, and mount a volume at `/data`.
+
 Open `http://localhost:8080` (or `PORT_HTTP`). Then in **Admin Panel → Settings**:
 1. **Email (SMTP)**: server, port, user, password, sender → *Send test*.
 2. **Receipt verification (Ollama)**: URL (e.g. `http://host.docker.internal:11434`) → *Test* → model.
