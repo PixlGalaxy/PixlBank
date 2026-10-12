@@ -12,7 +12,7 @@ import type {
 } from '../../types/index.js';
 import { badRequest, notFound } from '../../errors.js';
 import { toPublicUser } from '../auth/auth.service.js';
-import { buildSchedule } from './schedule.js';
+import { amortize, buildSchedule, periodRate } from './schedule.js';
 import { isIsoDate, today } from './dates.js';
 
 export interface LoanInput {
@@ -119,12 +119,22 @@ function toPaymentView(p: Payment, split?: { interest: number; principal: number
  * each installment's interest before its principal, which is how a lender
  * books it. Everything shown on dashboards (collected interest, % paid, next
  * due date...) derives from this one pass, so nothing can drift out of sync.
+ *
+ * A payment first covers whatever is due up to its period's installment (the
+ * first one due on or after the payment date). Anything beyond that is a
+ * prepayment: it goes straight to principal — booked on the last installment
+ * covered — and the installments still ahead are re-amortized over the new
+ * balance, so they shrink (to zero once the balance is gone). Paying less just
+ * leaves that installment partly unpaid, and the next payment covers it first.
  */
-export function allocate(loan: Loan, installments: Installment[], payments: Payment[], now = today()) {
+export function allocate(loan: Loan, stored: Installment[], payments: Payment[], now = today()) {
   const approved = payments
     .filter((p) => p.status === 'approved')
     .sort((a, b) => a.paid_on.localeCompare(b.paid_on) || a.created_at.localeCompare(b.created_at));
 
+  // The stored rows are the original plan; prepayments rewrite the copies.
+  const installments = stored.map((inst) => ({ ...inst }));
+  const r = periodRate(loan.interest_rate, loan.rate_period, loan.frequency);
   const paidPerInstallment = installments.map(() => ({ interest: 0, principal: 0 }));
   const completedOn: (string | null)[] = installments.map(() => null);
   const splits = new Map<string, { interest: number; principal: number }>();
@@ -134,7 +144,9 @@ export function allocate(loan: Loan, installments: Installment[], payments: Paym
   for (const payment of approved) {
     let left = payment.amount_cents;
     const split = { interest: 0, principal: 0 };
-    while (left > 0 && cursor < installments.length) {
+    const periodEnd = installments.findIndex((inst) => inst.due_on >= payment.paid_on);
+    const lastCovered = periodEnd === -1 ? installments.length - 1 : periodEnd;
+    while (left > 0 && cursor <= lastCovered && cursor < installments.length) {
       const inst = installments[cursor]!;
       const done = paidPerInstallment[cursor]!;
       const interestTake = Math.min(left, inst.interest_cents - done.interest);
@@ -150,6 +162,31 @@ export function allocate(loan: Loan, installments: Installment[], payments: Paym
         cursor++;
       }
     }
+
+    // Past the payment's own period with money left over: prepay principal and re-amortize the rest.
+    if (left > 0 && cursor > 0 && cursor < installments.length) {
+      const ahead = installments.slice(cursor);
+      const balance = ahead.reduce((s, inst) => s + inst.principal_cents, 0);
+      const prepaid = Math.min(left, balance);
+      const booked = installments[cursor - 1]!;
+      booked.principal_cents += prepaid;
+      booked.amount_cents += prepaid;
+      paidPerInstallment[cursor - 1]!.principal += prepaid;
+      split.principal += prepaid;
+      left -= prepaid;
+      amortize(balance - prepaid, r, ahead.length, loan.interest_method).forEach((row, i) => {
+        const inst = ahead[i]!;
+        inst.principal_cents = row.principalCents;
+        inst.interest_cents = row.interestCents;
+        inst.amount_cents = row.principalCents + row.interestCents;
+      });
+    }
+    // Installments a prepayment brought down to nothing are settled by it.
+    while (cursor < installments.length && installments[cursor]!.amount_cents === 0) {
+      completedOn[cursor] = payment.paid_on;
+      cursor++;
+    }
+
     overpaid += left;
     splits.set(payment.id, split);
   }

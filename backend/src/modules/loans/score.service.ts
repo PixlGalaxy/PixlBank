@@ -91,6 +91,8 @@ export class ScoreService {
       const { installments: views, summary } = allocate(loan, installments, payments, asOf);
 
       for (const inst of views) {
+        // Wiped out by a prepayment: nothing was ever owed on it.
+        if (inst.amount_cents === 0) continue;
         if (inst.paid_on) {
           hasHistory = true;
           const late = daysBetween(inst.due_on, inst.paid_on);

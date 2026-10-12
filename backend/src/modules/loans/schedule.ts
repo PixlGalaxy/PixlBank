@@ -56,34 +56,33 @@ export function dueDate(firstDueOn: string, frequency: PaymentFrequency, index: 
   return format(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
 }
 
+export interface AmortizedRow {
+  principalCents: number;
+  interestCents: number;
+}
+
 /**
- * Builds the installment table. All math is done in integer cents; rounding
- * leftovers are absorbed by the last installment so the totals add up exactly.
+ * Splits `principalCents` into `n` installments at period rate `r`. All math is
+ * done in integer cents; rounding leftovers are absorbed by the last
+ * installment so the totals add up exactly.
  *
  * - french: fixed installment P·r / (1 − (1+r)^−n); each one's interest is
  *   charged on the outstanding balance, so interest shrinks over time.
  * - simple: total interest P·r·n spread evenly; every installment is identical.
  */
-export function buildSchedule(terms: ScheduleTerms): ScheduledInstallment[] {
-  const n = terms.installmentsCount;
-  const P = terms.principalCents;
-  const r = periodRate(terms.interestRate, terms.ratePeriod, terms.frequency);
-  const rows: ScheduledInstallment[] = [];
+export function amortize(principalCents: number, r: number, n: number, method: InterestMethod): AmortizedRow[] {
+  const P = principalCents;
+  const rows: AmortizedRow[] = [];
 
-  if (terms.interestMethod === 'simple') {
+  if (method === 'simple') {
     const totalInterest = Math.round(P * r * n);
     const principalEach = Math.floor(P / n);
     const interestEach = Math.floor(totalInterest / n);
     for (let i = 0; i < n; i++) {
       const last = i === n - 1;
-      const principalCents = last ? P - principalEach * (n - 1) : principalEach;
-      const interestCents = last ? totalInterest - interestEach * (n - 1) : interestEach;
       rows.push({
-        number: i + 1,
-        dueOn: dueDate(terms.firstDueOn, terms.frequency, i),
-        amountCents: principalCents + interestCents,
-        principalCents,
-        interestCents,
+        principalCents: last ? P - principalEach * (n - 1) : principalEach,
+        interestCents: last ? totalInterest - interestEach * (n - 1) : interestEach,
       });
     }
     return rows;
@@ -96,13 +95,19 @@ export function buildSchedule(terms: ScheduleTerms): ScheduledInstallment[] {
     const interestCents = Math.round(balance * r);
     const principalCents = last ? balance : Math.min(balance, Math.round(payment) - interestCents);
     balance -= principalCents;
-    rows.push({
-      number: i + 1,
-      dueOn: dueDate(terms.firstDueOn, terms.frequency, i),
-      amountCents: principalCents + interestCents,
-      principalCents,
-      interestCents,
-    });
+    rows.push({ principalCents, interestCents });
   }
   return rows;
+}
+
+/** Builds the original installment table for a loan's terms (see `amortize`). */
+export function buildSchedule(terms: ScheduleTerms): ScheduledInstallment[] {
+  const r = periodRate(terms.interestRate, terms.ratePeriod, terms.frequency);
+  return amortize(terms.principalCents, r, terms.installmentsCount, terms.interestMethod).map((row, i) => ({
+    number: i + 1,
+    dueOn: dueDate(terms.firstDueOn, terms.frequency, i),
+    amountCents: row.principalCents + row.interestCents,
+    principalCents: row.principalCents,
+    interestCents: row.interestCents,
+  }));
 }
