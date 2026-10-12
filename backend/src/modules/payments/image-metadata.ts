@@ -1,6 +1,13 @@
 import { inflateSync } from 'zlib';
 
 /**
+ * Compressed text chunks are inflated with a hard cap: a few KB of deflate can
+ * expand to gigabytes, and any debtor can upload a receipt.
+ */
+const MAX_INFLATED = 1024 * 1024;
+const inflate = (data: Buffer) => inflateSync(data, { maxOutputLength: MAX_INFLATED });
+
+/**
  * What a receipt image says about itself, for the lender to weigh next to the
  * AI score. Dates are as the device wrote them ("YYYY-MM-DD HH:MM:SS", with
  * the UTC offset when the file has one). Anything can be missing: WhatsApp,
@@ -143,7 +150,7 @@ function readPng(buf: Buffer, out: Collected): void {
         let text: string | undefined;
         try {
           if (type === 'tEXt') text = data.toString('latin1', nul + 1);
-          else if (type === 'zTXt') text = inflateSync(data.subarray(nul + 2)).toString('latin1');
+          else if (type === 'zTXt') text = inflate(data.subarray(nul + 2)).toString('latin1');
           else {
             const compressed = data[nul + 1] === 1;
             // Skip the language tag and translated keyword (two more NUL-terminated strings).
@@ -151,7 +158,7 @@ function readPng(buf: Buffer, out: Collected): void {
             const transEnd = langEnd === -1 ? -1 : data.indexOf(0, langEnd + 1);
             if (transEnd !== -1) {
               const raw = data.subarray(transEnd + 1);
-              text = (compressed ? inflateSync(raw) : raw).toString('utf8');
+              text = (compressed ? inflate(raw) : raw).toString('utf8');
             }
           }
         } catch {
