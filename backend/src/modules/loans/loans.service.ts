@@ -120,13 +120,29 @@ function toPaymentView(p: Payment, split?: { interest: number; principal: number
 }
 
 /**
+ * The installment a payment belongs to. Monthly loans go by calendar month: an
+ * October payment is October's installment whatever the day, so paying more
+ * in October raises October's payment instead of covering November's. Weekly
+ * and biweekly ones have no such month, so a payment belongs to the next
+ * installment due on or after it.
+ */
+function periodIndex(installments: Installment[], paidOn: string, frequency: Loan['frequency']): number {
+  if (frequency === 'monthly') {
+    const sameMonth = installments.findIndex((inst) => inst.due_on.slice(0, 7) === paidOn.slice(0, 7));
+    if (sameMonth !== -1) return sameMonth;
+  }
+  const next = installments.findIndex((inst) => inst.due_on >= paidOn);
+  return next === -1 ? installments.length - 1 : next;
+}
+
+/**
  * Applies the approved payments, oldest first, to the installments in order —
  * each installment's interest before its principal, which is how a lender
  * books it. Everything shown on dashboards (collected interest, % paid, next
  * due date...) derives from this one pass, so nothing can drift out of sync.
  *
- * A payment first covers whatever is due up to its period's installment (the
- * first one due on or after the payment date). Anything beyond that is a
+ * A payment first covers whatever is due up to its period's installment (see
+ * `periodIndex`). Anything beyond that is a
  * prepayment: it goes straight to principal — booked on the last installment
  * covered — and the installments still ahead are re-amortized over the new
  * balance, so they shrink (to zero once the balance is gone). Paying less just
@@ -149,8 +165,7 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
   for (const payment of approved) {
     let left = payment.amount_cents;
     const split = { interest: 0, principal: 0 };
-    const periodEnd = installments.findIndex((inst) => inst.due_on >= payment.paid_on);
-    const lastCovered = periodEnd === -1 ? installments.length - 1 : periodEnd;
+    const lastCovered = periodIndex(installments, payment.paid_on, loan.frequency);
     while (left > 0 && cursor <= lastCovered && cursor < installments.length) {
       const inst = installments[cursor]!;
       const done = paidPerInstallment[cursor]!;
