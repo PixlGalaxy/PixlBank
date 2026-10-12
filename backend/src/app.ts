@@ -30,6 +30,8 @@ import { RemindersService } from './modules/mail/reminders.service.js';
 import { ReceiptVerifier } from './modules/payments/receipt-verifier.js';
 import { PaymentsService } from './modules/payments/payments.service.js';
 import { createPaymentsRoutes } from './modules/payments/payments.routes.js';
+import { LiveEvents } from './modules/live/live.service.js';
+import { createLiveRoutes } from './modules/live/live.routes.js';
 
 export function createApp(db: Db, config: EnvConfig): express.Application {
   const app = express();
@@ -44,7 +46,8 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
   const updateCheck = new UpdateCheckService(config.IMAGE_REVISION, config.UPDATE_CHECK_ENABLED);
   const ipBans = new IpBansService(db);
 
-  const loans = new LoansService(db);
+  const live = new LiveEvents();
+  const loans = new LoansService(db, live);
   const mail = new MailService(db, settings, config, te);
   const verifier = new ReceiptVerifier(settings, config);
   const payments = new PaymentsService(db, loans, verifier, mail, te, config.RECEIPTS_DIR);
@@ -94,6 +97,11 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
 
   const { router: authRoutes, loginIpLimiter } = createAuthRoutes(db, config, t, metrics);
   app.use('/api/auth', authRoutes);
+  // Account and avatar edits show up on the lender's pages (names, photos, the debtor list).
+  app.use(['/api/users', '/api/avatars'], (req, res, next) => {
+    if (req.method !== 'GET') res.on('finish', () => res.statusCode < 400 && live.publish(null));
+    next();
+  });
   app.use(
     '/api/users',
     createUsersRoutes(db, t, metrics, () => settings.getString(SETTINGS_KEYS.defaultLanguage, config.LANGUAGE)),
@@ -105,6 +113,7 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
   app.use('/api/loans', createLoansRoutes(t, loans, payments, reminders, mail, new ScoreService(db)));
   const { router: paymentsRoutes, receiptIpLimiter } = createPaymentsRoutes(t, config, payments);
   app.use('/api/payments', paymentsRoutes);
+  app.use('/api/live', createLiveRoutes(t, live));
 
   app.use(
     '/api/admin',

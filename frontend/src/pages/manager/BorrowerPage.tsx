@@ -10,6 +10,7 @@ import { useI18n } from '../../i18n/I18nContext';
 import { byCurrency, formatMoney, formatPercent } from '../../lib/money';
 import { cumulativeProgress, monthlyCollections, totalsFor } from '../../lib/loanStats';
 import { usePollWhileAnalyzing } from '../../hooks/usePollWhileAnalyzing';
+import { useLiveUpdates } from '../../hooks/useLiveUpdates';
 import Avatar from '../../components/ui/Avatar';
 import StatTile from '../../components/charts/StatTile';
 import CollectionsChart from '../../components/charts/CollectionsChart';
@@ -55,6 +56,7 @@ const BorrowerPage = () => {
     void load();
   }, [load]);
   usePollWhileAnalyzing(loans, load);
+  useLiveUpdates(load);
 
   const groups = useMemo(() => byCurrency(loans ?? []), [loans]);
   const currencies = [...groups.keys()];

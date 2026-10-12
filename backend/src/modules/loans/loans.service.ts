@@ -14,6 +14,7 @@ import { badRequest, notFound } from '../../errors.js';
 import { toPublicUser } from '../auth/auth.service.js';
 import { amortize, buildSchedule, periodRate } from './schedule.js';
 import { isIsoDate, today } from './dates.js';
+import type { LiveEvents } from '../live/live.service.js';
 
 export interface LoanInput {
   borrowerId?: unknown;
@@ -240,7 +241,15 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
 }
 
 export class LoansService {
-  constructor(private db: Db) {}
+  constructor(
+    private db: Db,
+    private live: LiveEvents,
+  ) {}
+
+  /** Tells open pages showing this loan (the lender's, and its debtor's) to reload. */
+  notifyChanged(loan: Pick<Loan, 'borrower_id'>): void {
+    this.live.publish(loan.borrower_id);
+  }
 
   private borrowerOf(loan: Loan): LoanView['borrower'] {
     const user = this.db.prepare('SELECT * FROM users WHERE id = ?').get(loan.borrower_id) as User;
@@ -410,6 +419,7 @@ export class LoansService {
         );
       this.writeSchedule(id, v);
     })();
+    this.live.publish(v.borrowerId);
     return this.detail(id);
   }
 
@@ -451,13 +461,17 @@ export class LoansService {
         v.firstDueOn !== existing.first_due_on;
       if (termsChanged) this.writeSchedule(id, v);
     })();
+    // Both debtors when the loan was moved to someone else.
+    this.live.publish(existing.borrower_id);
+    if (v.borrowerId !== existing.borrower_id) this.live.publish(v.borrowerId);
     return this.detail(id);
   }
 
   /** Receipt files are removed by the caller (PaymentsService), which knows where they live. */
   remove(id: string): void {
-    const result = this.db.prepare('DELETE FROM loans WHERE id = ?').run(id);
-    if (result.changes === 0) throw notFound();
+    const loan = this.getRaw(id);
+    this.db.prepare('DELETE FROM loans WHERE id = ?').run(id);
+    this.live.publish(loan.borrower_id);
   }
 
   /** Preview for the loan form, so the admin sees the schedule before saving. */

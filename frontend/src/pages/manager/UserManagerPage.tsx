@@ -12,6 +12,7 @@ import { totalsFor } from '../../lib/loanStats';
 import Avatar from '../../components/ui/Avatar';
 import { btn, card, errorBox, input } from '../../components/ui/styles';
 import UserFormModal from '../admin/UserFormModal';
+import { useLiveUpdates } from '../../hooks/useLiveUpdates';
 
 /**
  * The lender's debtors at a glance — distinct from the Admin Panel's account
@@ -42,6 +43,7 @@ const UserManagerPage = () => {
   useEffect(() => {
     void load();
   }, [load]);
+  useLiveUpdates(load);
 
   const byBorrower = useMemo(() => {
     const map = new Map<string, LoanDetail[]>();

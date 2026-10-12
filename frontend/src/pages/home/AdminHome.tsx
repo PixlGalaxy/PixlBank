@@ -13,6 +13,7 @@ import BalanceMeter from '../../components/charts/BalanceMeter';
 import CurrencyTabs from '../../components/loans/CurrencyTabs';
 import { AiScoreBadge, LoanStateBadge } from '../../components/loans/Badges';
 import { usePollWhileAnalyzing } from '../../hooks/usePollWhileAnalyzing';
+import { useLiveUpdates } from '../../hooks/useLiveUpdates';
 import Avatar from '../../components/ui/Avatar';
 import { btn, card, errorBox } from '../../components/ui/styles';
 
@@ -35,6 +36,7 @@ const AdminHome = () => {
     void load();
   }, [load]);
   usePollWhileAnalyzing(loans, load);
+  useLiveUpdates(load);
 
   const groups = useMemo(() => byCurrency(loans ?? []), [loans]);
   const currencies = [...groups.keys()];

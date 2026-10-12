@@ -58,6 +58,14 @@ export class PaymentsService {
     return payment;
   }
 
+  private notifyChanged(payment: Payment): void {
+    try {
+      this.loans.notifyChanged(this.loans.getRaw(payment.loan_id));
+    } catch {
+      // The loan is gone (deleted while a verification was queued) — nobody to tell.
+    }
+  }
+
   private admin(): User | undefined {
     return this.db.prepare("SELECT * FROM users WHERE role = 'admin'").get() as User | undefined;
   }
@@ -100,6 +108,7 @@ export class PaymentsService {
          VALUES (?, ?, ?, ?, 'approved', 'admin', ?, 'not_required', ?, datetime('now'), ?)`,
       )
       .run(id, loan.id, amountCents, paidOn, this.cleanNote(note), admin.id, admin.id);
+    this.loans.notifyChanged(loan);
     logger.system.info(`"${admin.username}" registered a payment of ${amountCents! / 100} ${loan.currency} on "${loan.title}"`);
     return this.get(id);
   }
@@ -145,6 +154,7 @@ export class PaymentsService {
         this.verifier.isConfigured() ? 'pending' : 'disabled',
         debtor.id,
       );
+    this.loans.notifyChanged(loan);
     logger.system.info(`"${debtor.username}" reported a payment of ${amountCents! / 100} ${loan.currency} on "${loan.title}"`);
 
     const to = recipientOf(debtor);
@@ -169,6 +179,7 @@ export class PaymentsService {
     const payment = this.get(paymentId);
     if (!payment.receipt_file) throw badRequest('payments.noReceipt');
     this.db.prepare("UPDATE payments SET ai_status = 'pending' WHERE id = ?").run(paymentId);
+    this.notifyChanged(payment);
     this.enqueue(paymentId);
   }
 
@@ -212,6 +223,7 @@ export class PaymentsService {
       );
 
     const updated = this.get(paymentId);
+    this.notifyChanged(updated);
     // Already decided by the lender while the model was running — nothing to alert about.
     if (updated.status === 'pending') await this.notifyAdmin(updated, result.reason, scored?.confidence ?? null);
   }
@@ -258,6 +270,7 @@ export class PaymentsService {
         "UPDATE payments SET status = ?, reviewed_by = ?, reviewed_at = datetime('now'), review_note = ? WHERE id = ?",
       )
       .run(decision, admin.id, reviewNote, paymentId);
+    this.loans.notifyChanged(loan);
     logger.system.info(`"${admin.username}" ${decision} a payment of ${payment.amount_cents / 100} ${loan.currency} on "${loan.title}"`);
 
     if (payment.status !== decision && payment.source === 'debtor') {
@@ -284,6 +297,7 @@ export class PaymentsService {
     if (actor.role !== 'admin') throw forbidden();
     const payment = this.get(paymentId);
     this.db.prepare('DELETE FROM payments WHERE id = ?').run(paymentId);
+    this.notifyChanged(payment);
     if (payment.receipt_file) await fs.rm(join(this.receiptsDir, payment.receipt_file), { force: true });
   }
 

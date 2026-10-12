@@ -9,6 +9,7 @@ import { useI18n } from '../../i18n/I18nContext';
 import { byCurrency, formatDate, formatMoney, formatPercent } from '../../lib/money';
 import { totalsFor } from '../../lib/loanStats';
 import { usePollWhileAnalyzing } from '../../hooks/usePollWhileAnalyzing';
+import { useLiveUpdates } from '../../hooks/useLiveUpdates';
 import StatTile from '../../components/charts/StatTile';
 import LoanPanel from '../../components/loans/LoanPanel';
 import { card, errorBox } from '../../components/ui/styles';
@@ -36,6 +37,7 @@ const DebtorHome = () => {
     void load();
   }, [load]);
   usePollWhileAnalyzing(loans, load);
+  useLiveUpdates(load);
 
   const groups = useMemo(() => [...byCurrency(loans ?? []).entries()].map(([c, list]) => totalsFor(c, list)), [loans]);
 
