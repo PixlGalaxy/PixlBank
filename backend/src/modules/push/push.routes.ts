@@ -39,8 +39,8 @@ export function createPushRoutes(t: Translate, push: PushService, mail: MailServ
       if (!isEmailKind(kind)) throw badRequest('adminSettings.invalidValue');
       const user = req.user!;
       const lang = typeof language === 'string' && isLanguage(language) ? language : user.language;
-      const sent = await mail.pushSample(user.id, kind, lang, user.display_name || user.username);
-      res.json({ sent, devices: push.devices(user.id).length });
+      const { sent, errors } = await mail.pushSample(user.id, kind, lang, user.display_name || user.username);
+      res.json({ sent, errors, devices: push.devices(user.id).length });
     }),
   );
 

@@ -14,5 +14,5 @@ export const pushApi = {
   subscribe: (subscription: PushSubscriptionJSON) => api.post<{ success: true }>('/push/subscription', { subscription }),
   unsubscribe: (endpoint: string) => api.del<{ success: true }>('/push/subscription', { endpoint }),
   /** Admin only: a sample of one kind to the admin's own devices. */
-  test: (kind: EmailKind, language: string) => api.post<{ sent: number; devices: number }>('/push/test', { kind, language }),
+  test: (kind: EmailKind, language: string) => api.post<{ sent: number; errors: string[]; devices: number }>('/push/test', { kind, language }),
 };

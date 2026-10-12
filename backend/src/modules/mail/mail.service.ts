@@ -7,7 +7,7 @@ import type { SettingsService } from '../../db/settings.js';
 import { SUPPORTED_LANGUAGES, isLanguage, type EmailTranslate } from '../../i18n/index.js';
 import { SETTINGS_KEYS } from '../admin/settings-keys.js';
 import { logger } from '../../logger.js';
-import type { PushService } from '../push/push.service.js';
+import type { PushResult, PushService } from '../push/push.service.js';
 import {
   EMAIL_KINDS,
   SAMPLE_VARS,
@@ -352,7 +352,7 @@ export class MailService {
   }
 
   /** A sample notification of one kind, to one user's devices (the Admin Panel's push tests). */
-  async pushSample(userId: string, kind: EmailKind, language: string, name: string): Promise<number> {
+  async pushSample(userId: string, kind: EmailKind, language: string, name: string): Promise<PushResult> {
     const lang = isLanguage(language) ? language : 'en';
     const rendered = renderEmail(this.getTemplate(kind, lang), this.sampleVars(kind, lang, name), this.appName(), this.appUrl());
     const payload = this.pushFor(rendered, kind);

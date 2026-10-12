@@ -27,8 +27,10 @@ const PushTestCard = () => {
     setBusy(kind);
     setError('');
     try {
-      const { sent, devices: total } = await pushApi.test(kind, lang);
+      const { sent, errors, devices: total } = await pushApi.test(kind, lang);
       setDevices(total);
+      // The push service's own reason, so a misconfiguration can be fixed without digging through the logs.
+      if (errors.length > 0) setError(`${t('adminEmail.pushFailed')} ${errors.join(' · ')}`);
       const message = t('adminEmail.pushSent', { count: sent });
       setToast(message);
       setTimeout(() => setToast((current) => (current === message ? null : current)), 2500);

@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Mail, ScrollText, Settings, ShieldBan, Users, Wrench, type LucideIcon } from 'lucide-react';
+import { BellRing, LayoutDashboard, ScrollText, Settings, ShieldBan, Users, Wrench, type LucideIcon } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nContext';
 import type { TranslationKey } from '../../i18n/translations';
 import DashboardSection from './DashboardSection';
@@ -29,7 +29,7 @@ const SECTIONS: { key: Section; icon: LucideIcon; labelKey: TranslationKey }[] =
   { key: 'users', icon: Users, labelKey: 'page.users' },
   { key: 'logs', icon: ScrollText, labelKey: 'page.logs' },
   { key: 'ipAccess', icon: ShieldBan, labelKey: 'ipAccess.navLabel' },
-  { key: 'email', icon: Mail, labelKey: 'adminEmail.navLabel' },
+  { key: 'email', icon: BellRing, labelKey: 'adminEmail.navLabel' },
   { key: 'settings', icon: Settings, labelKey: 'adminSettings.navLabel' },
   { key: 'system', icon: Wrench, labelKey: 'adminSystem.navLabel' },
 ];

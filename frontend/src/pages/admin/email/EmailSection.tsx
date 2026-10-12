@@ -8,8 +8,9 @@ import EmailTemplatesCard from './EmailTemplatesCard';
 import PushTestCard from './PushTestCard';
 
 /**
- * Everything about outgoing email: whether the server answers, how to reach it,
- * the daily reminders, test sends, what went out lately and the templates.
+ * Everything about notifications (shown as "Notifications" in the Admin Panel):
+ * whether the SMTP server answers, how to reach it, the daily reminders, email
+ * and push test sends, what went out lately and the templates both use.
  */
 const EmailSection = () => {
   // Bumped after anything that changes the connection or sends mail, so the status and the log catch up.

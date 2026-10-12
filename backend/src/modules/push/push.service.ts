@@ -26,6 +26,12 @@ interface SubscriptionRow {
   last_sent_at: string | null;
 }
 
+export interface PushResult {
+  sent: number;
+  /** Why each failed device failed, as the push service put it (shown by the Admin Panel's tests). */
+  errors: string[];
+}
+
 export interface PushDevice {
   id: string;
   userAgent: string | null;
@@ -122,9 +128,9 @@ export class PushService {
 
   /**
    * Sends to every device of an active user. Never throws: a push outage must
-   * not break what triggered it. Returns how many devices accepted it.
+   * not break what triggered it. Returns how many devices accepted it, and why the others didn't.
    */
-  async notifyUser(userId: string, payload: PushPayload): Promise<number> {
+  async notifyUser(userId: string, payload: PushPayload): Promise<PushResult> {
     const rows = this.db
       .prepare(
         `SELECT s.* FROM push_subscriptions s JOIN users u ON u.id = s.user_id
@@ -141,18 +147,25 @@ export class PushService {
             timeout: 10_000,
           });
           this.db.prepare("UPDATE push_subscriptions SET last_sent_at = datetime('now') WHERE id = ?").run(row.id);
-          return 1;
+          return null;
         } catch (err) {
+          // The push service's own reason (e.g. Apple's {"reason":"BadJwtToken"}) is in the body, not the message.
+          const reason =
+            err instanceof WebPushError
+              ? `${err.statusCode} ${err.body?.trim() || err.message}`.slice(0, 300)
+              : err instanceof Error
+                ? err.message
+                : String(err);
           // 404/410: the device unsubscribed or the app was removed — forget it.
           if (err instanceof WebPushError && (err.statusCode === 404 || err.statusCode === 410)) {
             this.db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(row.id);
-          } else {
-            logger.warn(`Push to a device of user ${userId} failed: ${err instanceof Error ? err.message : String(err)}`);
           }
-          return 0;
+          logger.warn(`Push to a device of user ${userId} (${new URL(row.endpoint).hostname}) failed: ${reason}`);
+          return reason;
         }
       }),
     );
-    return results.reduce<number>((a, b) => a + b, 0);
+    const errors = results.filter((r): r is string => r !== null);
+    return { sent: results.length - errors.length, errors };
   }
 }
