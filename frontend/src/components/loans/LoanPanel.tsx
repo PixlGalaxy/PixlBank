@@ -163,13 +163,15 @@ const LoanPanel = ({ loan, isAdmin, borrowers = [], onChanged }: Props) => {
             principalCollectedCents={s.principalCollectedCents}
             interestCollectedCents={s.interestCollectedCents}
             remainingCents={s.remainingCents}
+            combined={!isAdmin}
           />
-          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          {/* The interest figures are the lender's earnings: never shown to the debtor. */}
+          <dl className={`mt-4 grid grid-cols-2 gap-3 text-sm ${isAdmin ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             {[
               [t('loans.totalToPay'), money(s.totalDueCents)],
               [t('charts.paid'), money(s.paidCents)],
               [t('charts.remaining'), money(s.remainingCents)],
-              [isAdmin ? t('loans.interestEarned') : t('loans.interestPaid'), `${money(s.interestCollectedCents)} / ${money(s.totalInterestCents)}`],
+              ...(isAdmin ? [[t('loans.interestEarned'), `${money(s.interestCollectedCents)} / ${money(s.totalInterestCents)}`]] : []),
             ].map(([name, value]) => (
               <div key={name}>
                 <dt className="text-xs text-slate-500 dark:text-slate-400">{name}</dt>
@@ -229,7 +231,7 @@ const LoanPanel = ({ loan, isAdmin, borrowers = [], onChanged }: Props) => {
         {tab === 'payments' ? (
           <PaymentsList payments={loan.payments} currency={loan.currency} isAdmin={isAdmin} onChanged={onChanged} />
         ) : (
-          <InstallmentsTable installments={loan.installments} currency={loan.currency} />
+          <InstallmentsTable installments={loan.installments} currency={loan.currency} showSplit={isAdmin} />
         )}
       </div>
 

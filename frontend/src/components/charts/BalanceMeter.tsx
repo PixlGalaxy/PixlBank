@@ -10,6 +10,8 @@ interface Props {
   remainingCents: number;
   /** Larger variant with a headline percentage. */
   large?: boolean;
+  /** One "paid" segment instead of principal + interest — the debtor's view, which never shows the lender's earnings. */
+  combined?: boolean;
 }
 
 /**
@@ -18,7 +20,7 @@ interface Props {
  * Segments are separated by a surface gap; every value is also printed below,
  * so nothing depends on reading the colors.
  */
-const BalanceMeter = ({ currency, principalCollectedCents, interestCollectedCents, remainingCents, large }: Props) => {
+const BalanceMeter = ({ currency, principalCollectedCents, interestCollectedCents, remainingCents, large, combined }: Props) => {
   const { t, language } = useI18n();
   const [hover, setHover] = useState<number | null>(null);
   const total = principalCollectedCents + interestCollectedCents + remainingCents;
@@ -27,8 +29,12 @@ const BalanceMeter = ({ currency, principalCollectedCents, interestCollectedCent
   const money = (cents: number) => formatMoney(cents, currency, language);
 
   const segments: (LegendItem & { cents: number })[] = [
-    { label: t('charts.principal'), color: 'var(--series-principal)', cents: principalCollectedCents },
-    { label: t('charts.interest'), color: 'var(--series-interest)', cents: interestCollectedCents },
+    ...(combined
+      ? [{ label: t('charts.paid'), color: 'var(--series-principal)', cents: paid }]
+      : [
+          { label: t('charts.principal'), color: 'var(--series-principal)', cents: principalCollectedCents },
+          { label: t('charts.interest'), color: 'var(--series-interest)', cents: interestCollectedCents },
+        ]),
     { label: t('charts.remaining'), color: 'var(--series-track)', cents: remainingCents },
   ];
 

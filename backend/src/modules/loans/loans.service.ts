@@ -512,13 +512,24 @@ export class LoansService {
   /**
    * The same detail a debtor is allowed to see: the AI's verdict only as a
    * color flag — the score, what it read and its notes are for the lender.
+   * Nor does it split anything into principal and interest: what the lender
+   * earns stays with the lender, so every amount is just "what you pay".
    */
   detailForDebtor(id: string): LoanDetail {
     const detail = this.detail(id);
     return {
       ...detail,
+      summary: {
+        ...detail.summary,
+        totalInterestCents: 0,
+        interestCollectedCents: 0,
+        principalCollectedCents: detail.summary.paidCents,
+      },
+      installments: detail.installments.map((i) => ({ ...i, principal_cents: i.amount_cents, interest_cents: 0 })),
       payments: detail.payments.map((p) => ({
         ...p,
+        principal_cents: p.principal_cents + p.interest_cents,
+        interest_cents: 0,
         ai_confidence: null,
         ai_amount_cents: null,
         ai_date: null,
