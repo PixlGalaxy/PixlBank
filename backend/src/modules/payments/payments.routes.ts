@@ -20,6 +20,12 @@ interface ParsedReport {
   receipt: { buffer: Buffer; mime: string } | null;
 }
 
+/** The browser's File.lastModified (ms since epoch); anything implausible is dropped. */
+function parseFileModified(value: string | undefined): number | null {
+  const ms = Number(value);
+  return Number.isInteger(ms) && ms > Date.UTC(2000, 0, 1) && ms < Date.now() + 86_400_000 ? ms : null;
+}
+
 /** Reads the whole multipart body into memory — receipts are small and Ollama needs the bytes anyway. */
 function parseReport(req: Request): Promise<ParsedReport> {
   return new Promise((resolve, reject) => {
@@ -98,7 +104,7 @@ export function createPaymentsRoutes(
         toCents(fields.amount),
         fields.paidOn,
         fields.note,
-        receipt,
+        receipt && { ...receipt, fileModifiedMs: parseFileModified(fields.fileModified) },
       );
       res.status(201).json(result);
     }),

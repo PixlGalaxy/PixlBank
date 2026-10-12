@@ -3,6 +3,7 @@ import type { Db } from '../../db/client.js';
 import type { User, Session, PublicUser, PendingAction, ThemeMode, ThemeSkin } from '../../types/index.js';
 import { THEME_MODES, THEME_SKINS } from '../../types/index.js';
 import { hashPassword, verifyPassword } from './password.js';
+import { normalizeEmail } from '../users/validation.js';
 
 export function isThemeMode(value: unknown): value is ThemeMode {
   return THEME_MODES.includes(value as ThemeMode);
@@ -41,9 +42,10 @@ export class AuthService {
     password: string,
     meta: { userAgent?: string; ip?: string },
   ): Promise<{ user: User; sessionToken: string; mustChangePassword: boolean } | null> {
+    const login = usernameOrEmail.trim();
     const user = this.db
-      .prepare('SELECT * FROM users WHERE (email = ? OR username = ?) AND is_active = 1')
-      .get(usernameOrEmail, usernameOrEmail) as User | undefined;
+      .prepare('SELECT * FROM users WHERE (lower(email) = ? OR username = ?) AND is_active = 1')
+      .get(normalizeEmail(login), login) as User | undefined;
 
     if (!user) {
       await verifyPassword(password, await getDummyHash());
@@ -51,7 +53,8 @@ export class AuthService {
     }
     if (!(await verifyPassword(password, user.password_hash))) return null;
 
-    const mustChangePassword = password === DEFAULT_PASSWORD;
+    // Still on "changeme", or on a temporary password the lender set for the account.
+    const mustChangePassword = password === DEFAULT_PASSWORD || user.must_change_password === 1;
     // Recorded on the session so the restriction holds server-side (requireAuth),
     // not just in the frontend's modal.
     const pendingAction: PendingAction | null = mustChangePassword ? 'password' : null;
@@ -98,16 +101,28 @@ export class AuthService {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
   }
 
-  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+  /**
+   * `currentPassword` null skips the check — only for a session restricted to
+   * this very change, which already proved the password at sign-in.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string | null,
+    newPassword: string,
+  ): Promise<'changed' | 'wrongCurrent' | 'unchanged'> {
     const user = this.db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId) as
       | Pick<User, 'password_hash'>
       | undefined;
-    if (!user || !(await verifyPassword(currentPassword, user.password_hash))) return false;
+    if (!user) return 'wrongCurrent';
+    if (currentPassword !== null && !(await verifyPassword(currentPassword, user.password_hash))) return 'wrongCurrent';
+    if (await verifyPassword(newPassword, user.password_hash)) return 'unchanged';
 
     const newHash = await hashPassword(newPassword);
-    this.db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(newHash, userId);
+    this.db
+      .prepare("UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = datetime('now') WHERE id = ?")
+      .run(newHash, userId);
     this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
-    return true;
+    return 'changed';
   }
 
   setAppearance(userId: string, appearance: { mode?: ThemeMode; skin?: ThemeSkin; language?: string }): User {

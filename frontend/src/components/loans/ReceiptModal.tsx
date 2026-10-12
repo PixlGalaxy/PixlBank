@@ -9,6 +9,7 @@ import { reasonText } from '../../lib/receipt';
 import Modal from '../ui/Modal';
 import { btn, errorBox, input, label } from '../ui/styles';
 import { AiFlagBadge, AiScoreBadge, PaymentStatusBadge } from './Badges';
+import ReceiptMetadataPanel from './ReceiptMetadataPanel';
 
 interface Props {
   payment: Payment;
@@ -118,6 +119,8 @@ const ReceiptModal = ({ payment, currency, canReview, onClose, onChanged }: Prop
               <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">{t('payments.aiAdvisory')}</p>
             </div>
           )}
+
+          {canReview && payment.receipt_meta && <ReceiptMetadataPanel meta={payment.receipt_meta} paidOn={payment.paid_on} />}
 
           {payment.source === 'debtor' && !canReview && payment.ai_flag && (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700">

@@ -53,6 +53,18 @@ export interface Installment {
   paid_on: string | null;
 }
 
+export interface ReceiptMetadata {
+  /** When the photo/screenshot was taken, as the device wrote it ("YYYY-MM-DD HH:MM:SS[±HH:MM]"). */
+  createdAt: string | null;
+  /** When an app last saved the image. */
+  modifiedAt: string | null;
+  /** The app that wrote the file. */
+  software: string | null;
+  device: string | null;
+  /** The file's last-modified time on the debtor's device (ISO), from the browser. */
+  fileModifiedAt: string | null;
+}
+
 export interface Payment {
   id: string;
   loan_id: string;
@@ -63,6 +75,8 @@ export interface Payment {
   note: string | null;
   receipt_mime: string | null;
   has_receipt: boolean;
+  /** What the receipt image says about itself — admin only (null for debtors and older receipts). */
+  receipt_meta: ReceiptMetadata | null;
   ai_status: AiStatus;
   ai_amount_cents: number | null;
   ai_date: string | null;
@@ -188,6 +202,8 @@ export const paymentsApi = {
     form.append('amount', String(input.amount));
     form.append('paidOn', input.paidOn);
     if (input.note) form.append('note', input.note);
+    // Browsers only expose a file's last-modified time, never its creation date.
+    form.append('fileModified', String(input.receipt.lastModified));
     form.append('receipt', input.receipt);
     const res = await fetch('/backend/api/payments/report', { method: 'POST', credentials: 'include', body: form });
     if (!res.ok) {

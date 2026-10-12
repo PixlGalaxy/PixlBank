@@ -46,6 +46,8 @@ export interface User {
   theme_skin: ThemeSkin;
   /** UI language, e.g. 'en' or 'es' — see SUPPORTED_LANGUAGES in i18n/index.ts. */
   language: string;
+  /** 1 while the account still has a password the lender set for it — see AuthService.login. */
+  must_change_password: number;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +114,8 @@ export interface Payment {
   note: string | null;
   receipt_file: string | null;
   receipt_mime: string | null;
+  /** JSON ReceiptMetadata read off the image at upload (payments/image-metadata.ts). */
+  receipt_meta: string | null;
   ai_status: AiStatus;
   ai_amount_cents: number | null;
   ai_date: string | null;

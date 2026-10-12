@@ -9,6 +9,7 @@ import { isIsoDate, today } from '../loans/dates.js';
 import type { LoansService } from '../loans/loans.service.js';
 import type { MailService, Recipient } from '../mail/mail.service.js';
 import type { ReceiptVerifier, ReasonCode } from './receipt-verifier.js';
+import { readImageMetadata } from './image-metadata.js';
 import { logger } from '../../logger.js';
 
 export const RECEIPT_EXT_BY_MIME: Record<string, string> = {
@@ -123,7 +124,7 @@ export class PaymentsService {
     amountCents: number | null,
     paidOn: unknown,
     note: unknown,
-    receipt: { buffer: Buffer; mime: string } | null,
+    receipt: { buffer: Buffer; mime: string; fileModifiedMs: number | null } | null,
   ): Promise<{ paymentId: string }> {
     const loan = this.loans.getRaw(loanId);
     if (loan.borrower_id !== debtor.id) throw notFound();
@@ -134,14 +135,16 @@ export class PaymentsService {
     if (!ext) throw badRequest('payments.receiptInvalidType');
     if (amountCents! > this.remainingCents(loan)) throw badRequest('payments.exceedsBalance');
     const cleanNote = this.cleanNote(note);
+    const meta = readImageMetadata(receipt.buffer, receipt.mime, receipt.fileModifiedMs);
 
     const id = randomUUID();
     const file = `${id}.${ext}`;
     await fs.writeFile(join(this.receiptsDir, file), receipt.buffer);
     this.db
       .prepare(
-        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, status, source, note, receipt_file, receipt_mime, ai_status, created_by)
-         VALUES (?, ?, ?, ?, 'pending', 'debtor', ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, status, source, note, receipt_file, receipt_mime, receipt_meta,
+           ai_status, created_by)
+         VALUES (?, ?, ?, ?, 'pending', 'debtor', ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -151,6 +154,7 @@ export class PaymentsService {
         cleanNote,
         file,
         receipt.mime,
+        JSON.stringify(meta),
         this.verifier.isConfigured() ? 'pending' : 'disabled',
         debtor.id,
       );

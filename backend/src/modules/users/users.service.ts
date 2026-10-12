@@ -5,7 +5,7 @@ import { badRequest, conflict, forbidden, notFound } from '../../errors.js';
 import { hashPassword } from '../auth/password.js';
 import { toPublicUser } from '../auth/auth.service.js';
 import type { MetricsService } from '../admin/metrics.service.js';
-import { EMAIL, PASSWORD_MAX, USERNAME, assertUniqueUser } from './validation.js';
+import { EMAIL, PASSWORD_MAX, USERNAME, assertUniqueUser, normalizeEmail } from './validation.js';
 
 export interface CreateUserInput {
   email: string;
@@ -61,24 +61,26 @@ export class UsersService {
 
   async create(input: CreateUserInput, language: string): Promise<PublicUser> {
     // Shape first, so a missing or mistyped field is a 400 rather than a crash.
-    if (typeof input.email !== 'string' || !EMAIL.test(input.email)) throw badRequest('users.invalidEmail');
+    if (typeof input.email !== 'string' || !EMAIL.test(normalizeEmail(input.email))) throw badRequest('users.invalidEmail');
+    const email = normalizeEmail(input.email);
     if (typeof input.username !== 'string' || !USERNAME.test(input.username)) throw badRequest('users.invalidUsername');
     if (typeof input.password !== 'string' || input.password.length < 8) throw badRequest('auth.passwordTooShort');
     if (input.password.length > PASSWORD_MAX) throw badRequest('auth.passwordTooLong');
     assertOptionalFields(input);
 
-    assertUniqueUser(this.db, 'email', input.email);
+    assertUniqueUser(this.db, 'email', email);
     assertUniqueUser(this.db, 'username', input.username);
 
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO users (id, email, username, password_hash, display_name, phone, notes, role, is_active, language)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'user', 1, ?)`,
+        `INSERT INTO users (id, email, username, password_hash, display_name, phone, notes, role, is_active, language,
+           must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'user', 1, ?, 1)`,
       )
       .run(
         id,
-        input.email,
+        email,
         input.username,
         await hashPassword(input.password),
         blankToNull(input.displayName) ?? null,
@@ -97,7 +99,8 @@ export class UsersService {
     if (existing.role === 'admin') throw forbidden('users.cannotEditAdmin');
 
     if (input.email !== undefined) {
-      if (typeof input.email !== 'string' || !EMAIL.test(input.email)) throw badRequest('users.invalidEmail');
+      if (typeof input.email !== 'string' || !EMAIL.test(normalizeEmail(input.email))) throw badRequest('users.invalidEmail');
+      input.email = normalizeEmail(input.email);
       assertUniqueUser(this.db, 'email', input.email, id);
     }
     if (input.password !== undefined && (typeof input.password !== 'string' || input.password.length < 8)) {
@@ -117,6 +120,8 @@ export class UsersService {
            notes = CASE WHEN ? THEN ? ELSE notes END,
            is_active = COALESCE(?, is_active),
            password_hash = COALESCE(?, password_hash),
+           -- A password the lender sets is only temporary: the debtor replaces it on next sign-in.
+           must_change_password = CASE WHEN ? THEN 1 ELSE must_change_password END,
            updated_at = datetime('now')
          WHERE id = ?`,
       )
@@ -130,6 +135,7 @@ export class UsersService {
         blankToNull(input.notes) ?? null,
         input.isActive === undefined ? null : input.isActive ? 1 : 0,
         input.password ? await hashPassword(input.password) : null,
+        input.password ? 1 : 0,
         id,
       );
 

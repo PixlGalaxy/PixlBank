@@ -6,9 +6,6 @@ import { useI18n } from '../i18n/I18nContext';
 import { btn, errorBox, input, label } from './ui/styles';
 import Modal from './ui/Modal';
 
-/** Any account whose password is still this literal value gets nagged to change it. */
-const DEFAULT_PASSWORD = 'changeme';
-
 const ForceChangePasswordModal = () => {
   const { t } = useI18n();
   const { logout, clearMustChangePassword } = useAuth();
@@ -30,7 +27,8 @@ const ForceChangePasswordModal = () => {
 
     setSaving(true);
     try {
-      await api.post('/auth/change-password', { currentPassword: DEFAULT_PASSWORD, newPassword: next });
+      // The session was just opened with the default or temporary password, so the server doesn't ask for it again.
+      await api.post('/auth/change-password', { newPassword: next });
       clearMustChangePassword();
       // The server drops every session after a password change, so sign back in with it.
       await logout();

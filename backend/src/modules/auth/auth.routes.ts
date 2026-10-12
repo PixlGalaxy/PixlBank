@@ -66,7 +66,7 @@ export function createAuthRoutes(
 
       logger.auth.info(`Login as "${result.user.username}" from ${req.ip} succeeded`);
       if (result.mustChangePassword) {
-        logger.auth.warn(`"${result.user.username}" is still using the default password and must change it`);
+        logger.auth.warn(`"${result.user.username}" signed in with a default or temporary password and must change it`);
       }
 
       res.cookie('session', result.sessionToken, {
@@ -130,19 +130,23 @@ export function createAuthRoutes(
 
   router.post('/change-password', requireAuth, loginIpLimiter.middleware, changePasswordLimiter.middleware, async (req: AuthenticatedRequest, res) => {
     const { currentPassword, newPassword } = req.body as { currentPassword?: unknown; newPassword?: unknown };
-    if (typeof currentPassword !== 'string' || typeof newPassword !== 'string' || !currentPassword || !newPassword) {
+    // A session held back for this change already proved the password at sign-in.
+    const forced = req.session!.pending_action === 'password';
+    const current = typeof currentPassword === 'string' && currentPassword !== '' ? currentPassword : null;
+    if (typeof newPassword !== 'string' || !newPassword || (!forced && current === null)) {
       return res.status(400).json({ error: t('auth.passwordsRequired') });
     }
     if (newPassword.length < 8) {
       return res.status(400).json({ error: t('auth.passwordTooShort') });
     }
-    if (newPassword.length > PASSWORD_MAX || currentPassword.length > PASSWORD_MAX) {
+    if (newPassword.length > PASSWORD_MAX || (current?.length ?? 0) > PASSWORD_MAX) {
       return res.status(400).json({ error: t('auth.passwordTooLong') });
     }
 
     try {
-      const ok = await authService.changePassword(req.user!.id, currentPassword, newPassword);
-      if (!ok) {
+      const result = await authService.changePassword(req.user!.id, forced ? null : current, newPassword);
+      if (result === 'unchanged') return res.status(400).json({ error: t('auth.passwordUnchanged') });
+      if (result === 'wrongCurrent') {
         logger.auth.warn(`Password change for "${req.user!.username}" from ${req.ip} failed: wrong current password`);
         return res.status(401).json({ error: t('auth.currentPasswordIncorrect') });
       }

@@ -15,6 +15,7 @@ import { toPublicUser } from '../auth/auth.service.js';
 import { amortize, buildSchedule, periodRate } from './schedule.js';
 import { isIsoDate, today } from './dates.js';
 import type { LiveEvents } from '../live/live.service.js';
+import type { ReceiptMetadata } from '../payments/image-metadata.js';
 
 export interface LoanInput {
   borrowerId?: unknown;
@@ -46,8 +47,10 @@ export interface InstallmentView extends Installment {
 export type AiFlag = 'green' | 'amber' | 'red';
 
 /** A payment as the UI sees it: the receipt is only ever referenced, never its storage name. */
-export interface PaymentView extends Omit<Payment, 'receipt_file' | 'ai_raw'> {
+export interface PaymentView extends Omit<Payment, 'receipt_file' | 'ai_raw' | 'receipt_meta'> {
   has_receipt: boolean;
+  /** Dates, software and device read off the receipt image — lender only. */
+  receipt_meta: ReceiptMetadata | null;
   /** The AI score as a color — all a debtor gets to see of it. */
   ai_flag: AiFlag | null;
   /** How much of this (approved) payment went to interest vs principal. */
@@ -105,10 +108,11 @@ export function aiFlag(confidence: number | null): AiFlag | null {
 }
 
 function toPaymentView(p: Payment, split?: { interest: number; principal: number }): PaymentView {
-  const { receipt_file, ai_raw: _raw, ...rest } = p;
+  const { receipt_file, ai_raw: _raw, receipt_meta, ...rest } = p;
   return {
     ...rest,
     has_receipt: Boolean(receipt_file),
+    receipt_meta: receipt_meta ? (JSON.parse(receipt_meta) as ReceiptMetadata) : null,
     ai_flag: aiFlag(p.ai_confidence),
     interest_cents: split?.interest ?? 0,
     principal_cents: split?.principal ?? 0,
@@ -520,6 +524,7 @@ export class LoansService {
         ai_date: null,
         ai_reason: null,
         ai_notes: null,
+        receipt_meta: null,
         ai_model: null,
       })),
     };

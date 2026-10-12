@@ -3,7 +3,7 @@ import type { Db } from '../../db/client.js';
 import type { EnvConfig } from '../../config/env.js';
 import type { User } from '../../types/index.js';
 import { hashPassword, verifyPassword } from './password.js';
-import { EMAIL, USERNAME } from '../users/validation.js';
+import { EMAIL, USERNAME, normalizeEmail } from '../users/validation.js';
 import { logger } from '../../logger.js';
 
 /**
@@ -16,7 +16,8 @@ import { logger } from '../../logger.js';
  *   .env; otherwise the one set from the web (Settings -> My Account) stays.
  */
 export async function bootstrapAdmin(db: Db, config: EnvConfig): Promise<void> {
-  const { ADMIN_USERNAME: username, ADMIN_EMAIL: email, ADMIN_PASSWORD: password } = config;
+  const { ADMIN_USERNAME: username, ADMIN_PASSWORD: password } = config;
+  const email = config.ADMIN_EMAIL && normalizeEmail(config.ADMIN_EMAIL);
   const existing = db.prepare("SELECT * FROM users WHERE role = 'admin'").get() as User | undefined;
 
   if (!username || !email || (!existing && !password)) {
@@ -40,7 +41,7 @@ export async function bootstrapAdmin(db: Db, config: EnvConfig): Promise<void> {
 
   // A debtor already holding the name/email would make the admin unreachable.
   const clash = db
-    .prepare("SELECT username FROM users WHERE role != 'admin' AND (username = ? OR email = ?)")
+    .prepare("SELECT username FROM users WHERE role != 'admin' AND (username = ? OR lower(email) = ?)")
     .get(username, email) as { username: string } | undefined;
   if (clash) {
     throw new Error(`ADMIN_USERNAME/ADMIN_EMAIL collide with the existing user "${clash.username}"; pick different values.`);
