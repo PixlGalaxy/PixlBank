@@ -62,6 +62,9 @@ export interface AdminSettings {
     user: string;
     from: string;
     passwordSet: boolean;
+    allowSelfSigned: boolean;
+    /** Where the settings in use come from: saved in the Admin Panel, the .env file, or nowhere. */
+    source: 'saved' | 'env' | 'none';
     configured: boolean;
   };
   reminders: { enabled: boolean; daysBefore: number; hour: number; lastRun: string | null };
@@ -101,6 +104,7 @@ export interface AdminSettingsPatch {
   /** Write-only; empty keeps the stored one. */
   smtpPassword?: string;
   smtpFrom?: string;
+  smtpAllowSelfSigned?: boolean;
   remindersEnabled?: boolean;
   reminderDaysBefore?: number;
   reminderHour?: number;
@@ -112,20 +116,70 @@ export interface AdminSettingsPatch {
   receiptAmountTolerance?: number;
 }
 
+export type EmailKind =
+  | 'reminder-upcoming'
+  | 'reminder-due'
+  | 'reminder-overdue'
+  | 'payment-received'
+  | 'payment-approved'
+  | 'payment-rejected'
+  | 'admin-payment-review'
+  | 'admin-receipt-suspicious'
+  | 'test';
+
 export interface EmailLogEntry {
   id: string;
   to_address: string;
   subject: string;
-  kind: string;
+  kind: EmailKind | string;
   status: 'sent' | 'failed' | 'skipped';
   error: string | null;
+  recipient_name: string | null;
+  language: string | null;
+  /** Sent from the Admin Panel's test buttons. */
+  is_test: number;
   created_at: string;
 }
 
+export interface SmtpStatus {
+  configured: boolean;
+  host: string;
+  port: number;
+  reachable: boolean;
+  pingMs: number | null;
+  auth: 'ok' | 'failed' | 'none' | 'skipped';
+  error: string | null;
+  checkedAt: string;
+}
+
+export interface EmailTemplate {
+  subject: string;
+  title: string;
+  message: string;
+  button: string;
+  smallPrint: string;
+}
+
+export interface EmailTemplateEntry {
+  kind: EmailKind;
+  /** Placeholders available in this kind, without braces. */
+  vars: string[];
+  languages: Record<string, EmailTemplate & { customized: boolean; defaults: EmailTemplate }>;
+}
+
 export const mailApi = {
-  test: (to?: string) => api.post<{ success: true; to: string }>('/admin/mail/test', { to }),
+  test: (to?: string, kind?: EmailKind, language?: string) =>
+    api.post<{ success: true; to: string }>('/admin/mail/test', { to, kind, language }),
   log: () => api.get<EmailLogEntry[]>('/admin/mail/log'),
   runReminders: () => api.post<{ sent: number }>('/admin/reminders/run'),
+  check: () => api.post<SmtpStatus>('/admin/mail/check'),
+  clearSettings: () => api.del<{ success: true }>('/admin/mail/settings'),
+  templates: () => api.get<EmailTemplateEntry[]>('/admin/mail/templates'),
+  saveTemplates: (templates: Partial<Record<EmailKind, Record<string, EmailTemplate>>>) =>
+    api.put<EmailTemplateEntry[]>('/admin/mail/templates', { templates }),
+  resetTemplates: () => api.del<EmailTemplateEntry[]>('/admin/mail/templates'),
+  preview: (kind: EmailKind, language: string, template: EmailTemplate) =>
+    api.post<{ subject: string; html: string }>('/admin/mail/templates/preview', { kind, language, template }),
 };
 
 export const ollamaApi = {

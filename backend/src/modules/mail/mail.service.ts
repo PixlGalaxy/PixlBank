@@ -1,11 +1,21 @@
 import { randomUUID } from 'crypto';
+import { connect } from 'net';
 import nodemailer from 'nodemailer';
 import type { Db } from '../../db/client.js';
 import type { EnvConfig } from '../../config/env.js';
 import type { SettingsService } from '../../db/settings.js';
-import type { EmailKey, EmailTranslate } from '../../i18n/index.js';
+import { SUPPORTED_LANGUAGES, isLanguage, type EmailTranslate } from '../../i18n/index.js';
 import { SETTINGS_KEYS } from '../admin/settings-keys.js';
 import { logger } from '../../logger.js';
+import {
+  EMAIL_KINDS,
+  SAMPLE_VARS,
+  defaultTemplate,
+  parseTemplate,
+  renderEmail,
+  type EmailKind,
+  type EmailTemplate,
+} from './templates.js';
 
 export interface SmtpConfig {
   enabled: boolean;
@@ -15,6 +25,25 @@ export interface SmtpConfig {
   user: string;
   password: string;
   from: string;
+  /** Skip certificate checks — for a self-signed mail server on the local network. */
+  allowSelfSigned: boolean;
+}
+
+/** Where the SMTP settings in use come from. */
+export type SmtpSource = 'saved' | 'env' | 'none';
+
+export interface SmtpStatus {
+  configured: boolean;
+  host: string;
+  port: number;
+  /** A TCP connection to host:port opened. */
+  reachable: boolean;
+  /** How long opening it took. */
+  pingMs: number | null;
+  /** 'none' when there's no username to sign in with. */
+  auth: 'ok' | 'failed' | 'none' | 'skipped';
+  error: string | null;
+  checkedAt: string;
 }
 
 export interface Recipient {
@@ -30,18 +59,37 @@ interface EmailLogRow {
   kind: string;
   status: 'sent' | 'failed' | 'skipped';
   error: string | null;
+  recipient_name: string | null;
+  language: string | null;
+  is_test: number;
   created_at: string;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+interface LogMeta {
+  name?: string | null;
+  language?: string | null;
+  isTest?: boolean;
 }
+
+const SMTP_KEYS = [
+  SETTINGS_KEYS.smtpEnabled,
+  SETTINGS_KEYS.smtpHost,
+  SETTINGS_KEYS.smtpPort,
+  SETTINGS_KEYS.smtpSecure,
+  SETTINGS_KEYS.smtpUser,
+  SETTINGS_KEYS.smtpPassword,
+  SETTINGS_KEYS.smtpFrom,
+  SETTINGS_KEYS.smtpAllowSelfSigned,
+];
+
+const templateKey = (kind: EmailKind, language: string) => `email_template:${kind}:${language}`;
 
 /**
  * Outgoing email. The SMTP configuration lives in app_settings (Admin Panel ->
- * Settings -> Email), with the .env SMTP_* values as first-boot defaults, and
- * is re-read on every send so edits apply immediately. Every attempt is
- * recorded in `email_log`, including the ones skipped because SMTP is off.
+ * Email), with the .env SMTP_* values as first-boot defaults, and is re-read
+ * on every send so edits apply immediately. Each kind of email has a template
+ * per language the lender can edit; the locale files hold the defaults. Every
+ * attempt is recorded in `email_log`, including the ones skipped because SMTP is off.
  */
 export class MailService {
   constructor(
@@ -62,7 +110,18 @@ export class MailService {
       user: s.getString(SETTINGS_KEYS.smtpUser, this.config.SMTP_USER ?? ''),
       password: s.getString(SETTINGS_KEYS.smtpPassword, this.config.SMTP_PASSWORD ?? ''),
       from: s.getString(SETTINGS_KEYS.smtpFrom, this.config.SMTP_FROM ?? ''),
+      allowSelfSigned: s.getBoolean(SETTINGS_KEYS.smtpAllowSelfSigned, false),
     };
+  }
+
+  source(): SmtpSource {
+    if (SMTP_KEYS.some((key) => this.settings.has(key))) return 'saved';
+    return this.config.SMTP_HOST ? 'env' : 'none';
+  }
+
+  /** "Remove saved settings": back to the .env values, or to no email at all. */
+  clearSaved(): void {
+    for (const key of SMTP_KEYS) this.settings.delete(key);
   }
 
   isConfigured(): boolean {
@@ -82,100 +141,197 @@ export class MailService {
     return this.db.prepare('SELECT * FROM email_log ORDER BY created_at DESC LIMIT ?').all(limit) as EmailLogRow[];
   }
 
-  private log(to: string, subject: string, kind: string, status: EmailLogRow['status'], error?: string): void {
+  private log(to: string, subject: string, kind: string, status: EmailLogRow['status'], meta: LogMeta, error?: string): void {
     this.db
-      .prepare('INSERT INTO email_log (id, to_address, subject, kind, status, error) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(randomUUID(), to, subject, kind, status, error ?? null);
+      .prepare(
+        `INSERT INTO email_log (id, to_address, subject, kind, status, error, recipient_name, language, is_test)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(randomUUID(), to, subject, kind, status, error ?? null, meta.name ?? null, meta.language ?? null, meta.isTest ? 1 : 0);
     // Keeps the table from growing forever on a long-lived install.
     this.db
       .prepare('DELETE FROM email_log WHERE id NOT IN (SELECT id FROM email_log ORDER BY created_at DESC LIMIT 500)')
       .run();
   }
 
-  /** Lays out a plain message as text + a minimal HTML version. */
-  private render(language: string, name: string, body: string): { text: string; html: string } {
-    const appName = this.appName();
-    const url = this.appUrl();
-    const greeting = this.te(language, 'email.greeting', { name });
-    const footer = this.te(language, 'email.footer', { app: appName });
-    const open = url ? this.te(language, 'email.openApp', { app: appName }) : '';
-
-    const text = [greeting, '', body, '', url ? `${open}: ${url}` : '', '', footer].filter((l, i, a) => l || a[i - 1]).join('\n');
-    const html = `<!doctype html><html><body style="margin:0;padding:24px;background:#f1f5f9;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#0f172a">
-<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">
-<div style="padding:18px 24px;background:#4f46e5;color:#ffffff;font-size:18px;font-weight:600">${escapeHtml(appName)}</div>
-<div style="padding:24px;font-size:15px;line-height:1.6">
-<p style="margin:0 0 16px">${escapeHtml(greeting)}</p>
-${body
-  .split('\n')
-  .map((line) => `<p style="margin:0 0 10px">${escapeHtml(line) || '&nbsp;'}</p>`)
-  .join('\n')}
-${url ? `<p style="margin:22px 0 0"><a href="${escapeHtml(url)}" style="display:inline-block;padding:10px 18px;background:#4f46e5;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:600">${escapeHtml(open)}</a></p>` : ''}
-</div>
-<div style="padding:14px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b">${escapeHtml(footer)}</div>
-</div></body></html>`;
-    return { text, html };
-  }
-
-  /** Throws on failure — used by the "send test email" button so the admin sees the SMTP error. */
-  async sendRaw(to: string, subject: string, text: string, html: string, kind: string): Promise<void> {
-    const c = this.getConfig();
-    if (!this.isConfigured()) {
-      this.log(to, subject, kind, 'skipped', 'SMTP is not configured');
-      throw new Error('SMTP is not configured');
-    }
-    const transport = nodemailer.createTransport({
+  private transport(c: SmtpConfig) {
+    return nodemailer.createTransport({
       host: c.host,
       port: c.port,
       secure: c.secure,
       auth: c.user ? { user: c.user, pass: c.password } : undefined,
+      // Still encrypted — only the certificate's issuer and name go unchecked.
+      tls: c.allowSelfSigned ? { rejectUnauthorized: false } : undefined,
       connectionTimeout: 15_000,
       greetingTimeout: 15_000,
     });
+  }
+
+  /** Opens a TCP connection, then signs in — never sends anything. */
+  async check(): Promise<SmtpStatus> {
+    const c = this.getConfig();
+    const status: SmtpStatus = {
+      configured: this.isConfigured(),
+      host: c.host,
+      port: c.port,
+      reachable: false,
+      pingMs: null,
+      auth: 'skipped',
+      error: null,
+      checkedAt: new Date().toISOString(),
+    };
+    if (!c.host) return status;
+
+    const started = Date.now();
     try {
-      await transport.sendMail({ from: c.from || c.user, to, subject, text, html });
-      this.log(to, subject, kind, 'sent');
+      await new Promise<void>((resolve, reject) => {
+        const socket = connect({ host: c.host, port: c.port });
+        socket.setTimeout(5000);
+        socket.once('connect', () => {
+          socket.destroy();
+          resolve();
+        });
+        socket.once('timeout', () => {
+          socket.destroy();
+          reject(new Error(`No answer from ${c.host}:${c.port} after 5 s`));
+        });
+        socket.once('error', reject);
+      });
+      status.reachable = true;
+      status.pingMs = Date.now() - started;
+    } catch (err) {
+      status.error = err instanceof Error ? err.message : String(err);
+      return status;
+    }
+
+    if (!c.user) {
+      status.auth = 'none';
+      return status;
+    }
+    try {
+      await this.transport(c).verify();
+      status.auth = 'ok';
+    } catch (err) {
+      status.auth = 'failed';
+      status.error = err instanceof Error ? err.message : String(err);
+    }
+    return status;
+  }
+
+  // ---- Templates ----
+
+  getTemplate(kind: EmailKind, language: string): EmailTemplate {
+    const lang = isLanguage(language) ? language : 'en';
+    const stored = this.settings.getOptionalString(templateKey(kind, lang));
+    if (stored) {
+      try {
+        const parsed = parseTemplate(JSON.parse(stored));
+        if (parsed) return parsed;
+      } catch {
+        // A broken row falls back to the default rather than breaking every email of that kind.
+      }
+    }
+    return defaultTemplate(this.te, kind, lang);
+  }
+
+  /** Every kind × language, flagged where the lender changed the default. */
+  allTemplates() {
+    return EMAIL_KINDS.map((kind) => ({
+      kind,
+      vars: ['app', 'name', ...Object.keys(SAMPLE_VARS[kind])],
+      languages: Object.fromEntries(
+        SUPPORTED_LANGUAGES.map((lang) => [
+          lang,
+          {
+            ...this.getTemplate(kind, lang),
+            customized: this.settings.has(templateKey(kind, lang)),
+            defaults: defaultTemplate(this.te, kind, lang),
+          },
+        ]),
+      ),
+    }));
+  }
+
+  /** Saves a template; one identical to the default is stored as "not customized". */
+  saveTemplate(kind: EmailKind, language: string, template: EmailTemplate): void {
+    const fallback = defaultTemplate(this.te, kind, language);
+    const same = (Object.keys(fallback) as (keyof EmailTemplate)[]).every((f) => fallback[f] === template[f]);
+    if (same) this.settings.delete(templateKey(kind, language));
+    else this.settings.set(templateKey(kind, language), JSON.stringify(template));
+  }
+
+  resetTemplates(): void {
+    for (const kind of EMAIL_KINDS) for (const lang of SUPPORTED_LANGUAGES) this.settings.delete(templateKey(kind, lang));
+  }
+
+  /** The sample values shown in previews and test emails, with the reason line in the right language. */
+  sampleVars(kind: EmailKind, language: string, name: string): Record<string, string> {
+    const vars: Record<string, string> = { app: this.appName(), name, ...SAMPLE_VARS[kind] };
+    if (kind === 'payment-rejected') vars.reason = this.te(language, 'receipt.reason.manual');
+    if (kind === 'admin-payment-review') vars.reason = this.te(language, 'receipt.reason.ok');
+    if (kind === 'admin-receipt-suspicious') {
+      vars.reason = this.te(language, 'receipt.reason.amount_mismatch', { detected: 'S/ 104.00' });
+    }
+    return vars;
+  }
+
+  preview(kind: EmailKind, language: string, template: EmailTemplate, name: string) {
+    const vars = this.sampleVars(kind, language, name);
+    return renderEmail(template, vars, this.appName(), this.appUrl() || 'https://pixlbank.example');
+  }
+
+  // ---- Sending ----
+
+  /** Throws on failure, so a test button can show the SMTP server's own message. */
+  private async deliver(
+    to: string,
+    rendered: { subject: string; text: string; html: string },
+    kind: string,
+    meta: LogMeta,
+  ): Promise<void> {
+    const c = this.getConfig();
+    if (!this.isConfigured()) {
+      this.log(to, rendered.subject, kind, 'skipped', meta, 'SMTP is not configured');
+      throw new Error('SMTP is not configured');
+    }
+    try {
+      await this.transport(c).sendMail({ from: c.from || c.user, to, ...rendered });
+      this.log(to, rendered.subject, kind, 'sent', meta);
       logger.info(`Email "${kind}" sent to ${to}`);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.log(to, subject, kind, 'failed', message);
+      this.log(to, rendered.subject, kind, 'failed', meta, message);
       logger.warn(`Email "${kind}" to ${to} failed: ${message}`);
       throw err;
     }
   }
 
   /**
-   * Fire-and-forget template send: never throws, so a mail outage can't break
-   * the action that triggered it (a payment report, a review...).
+   * Fire-and-forget send from the kind's template: never throws, so a mail
+   * outage can't break the action that triggered it (a payment report, a review...).
    */
-  async send(
-    to: Recipient,
-    kind: string,
-    subjectKey: EmailKey,
-    bodyKey: EmailKey,
-    vars: Record<string, string | number>,
-  ): Promise<boolean> {
-    const allVars = { app: this.appName(), name: to.name, ...vars };
-    const subject = this.te(to.language, subjectKey, allVars);
-    const body = this.te(to.language, bodyKey, allVars);
+  async send(to: Recipient, kind: EmailKind, vars: Record<string, string | number>): Promise<boolean> {
     if (!to.email) return false;
-    if (!this.isConfigured()) {
-      this.log(to.email, subject, kind, 'skipped', 'SMTP is not configured');
-      return false;
-    }
-    const { text, html } = this.render(to.language, to.name, body);
+    const rendered = renderEmail(
+      this.getTemplate(kind, to.language),
+      { app: this.appName(), name: to.name, ...vars },
+      this.appName(),
+      this.appUrl(),
+    );
     try {
-      await this.sendRaw(to.email, subject, text, html, kind);
+      await this.deliver(to.email, rendered, kind, { name: to.name, language: to.language });
       return true;
     } catch {
       return false;
     }
   }
 
-  async sendTest(to: string, language: string, name: string): Promise<void> {
-    const vars = { app: this.appName(), name };
-    const subject = this.te(language, 'email.test.subject', vars);
-    const { text, html } = this.render(language, name, this.te(language, 'email.test.body', vars));
-    await this.sendRaw(to, subject, text, html, 'test');
+  /** A sample of one kind (marked [TEST]) from the Admin Panel. Throws with the SMTP error. */
+  async sendSample(kind: EmailKind, to: string, language: string, name: string): Promise<void> {
+    const lang = isLanguage(language) ? language : 'en';
+    const vars = this.sampleVars(kind, lang, name);
+    const rendered = renderEmail(this.getTemplate(kind, lang), vars, this.appName(), this.appUrl());
+    if (kind !== 'test') rendered.subject = `[TEST] ${rendered.subject}`;
+    await this.deliver(to, rendered, kind, { name, language: lang, isTest: true });
   }
 }

@@ -49,5 +49,5 @@ export function useSettingsForm<T>(pick: (s: AdminSettings) => T) {
 
   const update = (patch: Partial<T>) => setForm((f) => (f ? { ...f, ...patch } : f));
 
-  return { data, form, update, save, saving, error, setError, toast, flash };
+  return { data, form, update, save, saving, error, setError, toast, flash, reload: load };
 }

@@ -1,7 +1,6 @@
 import type { Db } from '../../db/client.js';
 import type { SettingsService } from '../../db/settings.js';
 import type { User } from '../../types/index.js';
-import type { EmailKey } from '../../i18n/index.js';
 import { SETTINGS_KEYS } from '../admin/settings-keys.js';
 import { addDays, today } from '../loans/dates.js';
 import type { LoanDetail, LoansService } from '../loans/loans.service.js';
@@ -11,11 +10,6 @@ import { logger } from '../../logger.js';
 
 type Kind = 'upcoming' | 'due' | 'overdue';
 
-const KEYS: Record<Kind, { subject: EmailKey; body: EmailKey }> = {
-  upcoming: { subject: 'email.reminderUpcoming.subject', body: 'email.reminderUpcoming.body' },
-  due: { subject: 'email.reminderDue.subject', body: 'email.reminderDue.body' },
-  overdue: { subject: 'email.reminderOverdue.subject', body: 'email.reminderOverdue.body' },
-};
 
 /**
  * Payment reminders to debtors. Once a day (from `reminder_hour` on) every
@@ -66,8 +60,6 @@ export class RemindersService {
     const ok = await this.mail.send(
       { email: user.email, name: user.display_name || user.username, language },
       `reminder-${kind}`,
-      KEYS[kind].subject,
-      KEYS[kind].body,
       {
         loan: loan.title,
         number: installment.number,

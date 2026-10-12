@@ -162,7 +162,7 @@ export class PaymentsService {
     logger.system.info(`"${debtor.username}" reported a payment of ${amountCents! / 100} ${loan.currency} on "${loan.title}"`);
 
     const to = recipientOf(debtor);
-    void this.mail.send(to, 'payment-received', 'email.paymentReceived.subject', 'email.paymentReceived.body', {
+    void this.mail.send(to, 'payment-received', {
       loan: loan.title,
       amount: formatMoney(amountCents!, loan.currency, to.language),
       date: paidOn,
@@ -250,8 +250,6 @@ export class PaymentsService {
     await this.mail.send(
       to,
       suspicious ? 'admin-receipt-suspicious' : 'admin-payment-review',
-      suspicious ? 'email.adminReceiptRejected.subject' : 'email.adminPaymentReview.subject',
-      suspicious ? 'email.adminReceiptRejected.body' : 'email.adminPaymentReview.body',
       {
         loan: loan.title,
         debtor: debtor.display_name || debtor.username,
@@ -289,8 +287,6 @@ export class PaymentsService {
       void this.mail.send(
         debtor,
         decision === 'approved' ? 'payment-approved' : 'payment-rejected',
-        decision === 'approved' ? 'email.paymentApproved.subject' : 'email.paymentRejected.subject',
-        decision === 'approved' ? 'email.paymentApproved.body' : 'email.paymentRejected.body',
         vars,
       );
     }

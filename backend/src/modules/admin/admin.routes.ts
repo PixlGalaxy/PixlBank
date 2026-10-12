@@ -16,6 +16,7 @@ import type { MailService } from '../mail/mail.service.js';
 import type { RemindersService } from '../mail/reminders.service.js';
 import type { ReceiptVerifier } from '../payments/receipt-verifier.js';
 import { asyncHandler } from '../../middleware/async-handler.js';
+import { isEmailKind, parseTemplate } from '../mail/templates.js';
 
 function numberField(body: Record<string, unknown>, key: string, min: number, max: number): number | undefined {
   if (body[key] === undefined) return undefined;
@@ -160,6 +161,8 @@ export function createAdminRoutes(
         user: smtp.user,
         from: smtp.from,
         passwordSet: Boolean(smtp.password),
+        allowSelfSigned: smtp.allowSelfSigned,
+        source: mail.source(),
         configured: mail.isConfigured(),
       },
       reminders: reminders.getConfig(),
@@ -243,6 +246,7 @@ export function createAdminRoutes(
     // Email (SMTP)
     booleanField(body, 'smtpEnabled', SETTINGS_KEYS.smtpEnabled);
     booleanField(body, 'smtpSecure', SETTINGS_KEYS.smtpSecure);
+    booleanField(body, 'smtpAllowSelfSigned', SETTINGS_KEYS.smtpAllowSelfSigned);
     textField(body, 'smtpHost', SETTINGS_KEYS.smtpHost, 255);
     textField(body, 'smtpUser', SETTINGS_KEYS.smtpUser, 255);
     textField(body, 'smtpFrom', SETTINGS_KEYS.smtpFrom, 255);
@@ -283,10 +287,13 @@ export function createAdminRoutes(
     '/mail/test',
     asyncHandler(async (req, res) => {
       const user = (req as AuthenticatedRequest).user!;
-      const { to } = req.body as { to?: unknown };
+      const { to, kind, language } = req.body as { to?: unknown; kind?: unknown; language?: unknown };
       const address = typeof to === 'string' && to.trim() ? to.trim() : user.email;
+      if (address.length > 254 || !/^[^\s@]+@[^\s@]+$/.test(address)) throw badRequest('users.invalidEmail');
+      if (kind !== undefined && !isEmailKind(kind)) throw badRequest('adminSettings.invalidValue');
+      const lang = typeof language === 'string' && isLanguage(language) ? language : user.language;
       try {
-        await mail.sendTest(address, user.language, user.display_name || user.username);
+        await mail.sendSample(kind ?? 'test', address, lang, user.display_name || user.username);
         res.json({ success: true, to: address });
       } catch (err) {
         // Surfaced verbatim: the SMTP server's own message is what the admin needs to fix it.
@@ -295,7 +302,56 @@ export function createAdminRoutes(
     }),
   );
 
-  router.get('/mail/log', (_req, res) => res.json(mail.recentLog()));
+  router.get('/mail/log', (_req, res) => res.json(mail.recentLog(20)));
+
+  // Connects and signs in, never sends — the "SMTP server status" card.
+  router.post(
+    '/mail/check',
+    asyncHandler(async (_req, res) => {
+      res.json(await mail.check());
+    }),
+  );
+
+  router.delete('/mail/settings', (_req, res) => {
+    mail.clearSaved();
+    res.json({ success: true });
+  });
+
+  router.get('/mail/templates', (_req, res) => res.json(mail.allTemplates()));
+
+  /** Body: { templates: { [kind]: { [language]: EmailTemplate } } } — only what the editor changed. */
+  router.put('/mail/templates', (req, res) => {
+    const { templates } = req.body as { templates?: unknown };
+    if (!templates || typeof templates !== 'object') throw badRequest('adminSettings.invalidValue');
+    const parsed: [Parameters<typeof mail.saveTemplate>[0], string, NonNullable<ReturnType<typeof parseTemplate>>][] = [];
+    for (const [kind, byLanguage] of Object.entries(templates as Record<string, unknown>)) {
+      if (!isEmailKind(kind) || !byLanguage || typeof byLanguage !== 'object') throw badRequest('adminSettings.invalidValue');
+      for (const [language, value] of Object.entries(byLanguage as Record<string, unknown>)) {
+        const template = parseTemplate(value);
+        if (!isLanguage(language) || !template) throw badRequest('adminSettings.invalidValue');
+        parsed.push([kind, language, template]);
+      }
+    }
+    // Validated as a whole first, so a bad entry saves nothing.
+    for (const [kind, language, template] of parsed) mail.saveTemplate(kind, language, template);
+    res.json(mail.allTemplates());
+  });
+
+  router.delete('/mail/templates', (_req, res) => {
+    mail.resetTemplates();
+    res.json(mail.allTemplates());
+  });
+
+  router.post('/mail/templates/preview', (req, res) => {
+    const { kind, language, template } = req.body as { kind?: unknown; language?: unknown; template?: unknown };
+    const parsed = parseTemplate(template);
+    if (!isEmailKind(kind) || typeof language !== 'string' || !isLanguage(language) || !parsed) {
+      throw badRequest('adminSettings.invalidValue');
+    }
+    const user = (req as AuthenticatedRequest).user!;
+    const { subject, html } = mail.preview(kind, language, parsed, user.display_name || user.username);
+    res.json({ subject, html });
+  });
 
   router.post(
     '/reminders/run',

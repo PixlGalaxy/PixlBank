@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, ScrollText, Settings, ShieldBan, Users, Wrench, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Mail, ScrollText, Settings, ShieldBan, Users, Wrench, type LucideIcon } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nContext';
 import type { TranslationKey } from '../../i18n/translations';
 import DashboardSection from './DashboardSection';
@@ -7,9 +7,10 @@ import UsersAdminPage from './UsersAdminPage';
 import LogsPage from './LogsPage';
 import IpAccessSection from './ipaccess/IpAccessSection';
 import SettingsAdminSection from './settings/SettingsAdminSection';
+import EmailSection from './email/EmailSection';
 import SystemSection from './system/SystemSection';
 
-type Section = 'dashboard' | 'users' | 'logs' | 'ipAccess' | 'settings' | 'system';
+type Section = 'dashboard' | 'users' | 'logs' | 'ipAccess' | 'email' | 'settings' | 'system';
 
 function isSection(value: string | null): value is Section {
   return (
@@ -17,6 +18,7 @@ function isSection(value: string | null): value is Section {
     value === 'users' ||
     value === 'logs' ||
     value === 'ipAccess' ||
+    value === 'email' ||
     value === 'settings' ||
     value === 'system'
   );
@@ -27,6 +29,7 @@ const SECTIONS: { key: Section; icon: LucideIcon; labelKey: TranslationKey }[] =
   { key: 'users', icon: Users, labelKey: 'page.users' },
   { key: 'logs', icon: ScrollText, labelKey: 'page.logs' },
   { key: 'ipAccess', icon: ShieldBan, labelKey: 'ipAccess.navLabel' },
+  { key: 'email', icon: Mail, labelKey: 'adminEmail.navLabel' },
   { key: 'settings', icon: Settings, labelKey: 'adminSettings.navLabel' },
   { key: 'system', icon: Wrench, labelKey: 'adminSystem.navLabel' },
 ];
@@ -67,6 +70,7 @@ const AdminPage = () => {
           {active === 'users' && <UsersAdminPage />}
           {active === 'logs' && <LogsPage />}
           {active === 'ipAccess' && <IpAccessSection />}
+          {active === 'email' && <EmailSection />}
           {active === 'settings' && <SettingsAdminSection />}
           {active === 'system' && <SystemSection />}
         </div>

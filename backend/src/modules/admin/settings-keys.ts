@@ -31,6 +31,8 @@ export const SETTINGS_KEYS = {
   smtpUser: 'smtp_user',
   smtpPassword: 'smtp_password',
   smtpFrom: 'smtp_from',
+  /** Accept a self-signed certificate (a mail server of your own on the LAN). */
+  smtpAllowSelfSigned: 'smtp_allow_self_signed',
   /** Public URL used for links inside emails. */
   appUrl: 'app_url',
 
