@@ -50,7 +50,7 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
 
   const live = new LiveEvents();
   const loans = new LoansService(db, live);
-  const push = new PushService(db, settings, () => config.ADMIN_EMAIL);
+  const push = new PushService(db, settings);
   const mail = new MailService(db, settings, config, te, push);
   const verifier = new ReceiptVerifier(settings, config);
   const payments = new PaymentsService(db, loans, verifier, mail, te, config.RECEIPTS_DIR);

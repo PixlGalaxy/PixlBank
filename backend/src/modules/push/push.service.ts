@@ -64,11 +64,11 @@ function isPushEndpoint(value: string): boolean {
  */
 export class PushService {
   private publicKey: string;
+  private privateKey: string;
 
   constructor(
     private db: Db,
     settings: SettingsService,
-    adminEmail: () => string,
   ) {
     let publicKey = settings.getOptionalString(SETTINGS_KEYS.vapidPublicKey);
     let privateKey = settings.getOptionalString(SETTINGS_KEYS.vapidPrivateKey);
@@ -79,8 +79,19 @@ export class PushService {
       logger.info('Generated the Web Push (VAPID) key pair');
     }
     this.publicKey = publicKey;
-    // Apple rejects pushes whose subject isn't a mailto: or https: URL.
-    webpush.setVapidDetails(`mailto:${adminEmail() || 'admin@localhost'}`, publicKey, privateKey);
+    this.privateKey = privateKey;
+  }
+
+  /**
+   * The contact every push is signed with. Apple refuses the signature
+   * (BadJwtToken) unless it's a real mailto: or https: address, so it's the
+   * admin account's email as stored — always there, unlike ADMIN_EMAIL, which
+   * is optional after the first boot — and never a made-up localhost one.
+   */
+  private subject(): string {
+    const row = this.db.prepare("SELECT email FROM users WHERE role = 'admin'").get() as { email: string } | undefined;
+    const email = row?.email.trim().toLowerCase();
+    return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? `mailto:${email}` : 'mailto:pixlbank@example.com';
   }
 
   getPublicKey(): string {
@@ -138,10 +149,12 @@ export class PushService {
       )
       .all(userId) as SubscriptionRow[];
     const body = JSON.stringify(payload);
+    const vapidDetails = { subject: this.subject(), publicKey: this.publicKey, privateKey: this.privateKey };
     const results = await Promise.all(
       rows.map(async (row) => {
         try {
           await webpush.sendNotification({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, body, {
+            vapidDetails,
             TTL: 24 * 60 * 60,
             urgency: 'high',
             timeout: 10_000,
@@ -162,6 +175,7 @@ export class PushService {
             const theirs = Date.parse(String(err.headers?.date ?? ''));
             const skewMinutes = Number.isNaN(theirs) ? 0 : Math.round((Date.now() - theirs) / 60_000);
             if (Math.abs(skewMinutes) >= 5) reason += ` — this server's clock is ${Math.abs(skewMinutes)} min ${skewMinutes > 0 ? 'ahead' : 'behind'}`;
+            if (err.statusCode === 403) reason += ` (signed as ${vapidDetails.subject})`;
           }
           // 404/410: the device unsubscribed or the app was removed — forget it.
           if (err instanceof WebPushError && (err.statusCode === 404 || err.statusCode === 410)) {
