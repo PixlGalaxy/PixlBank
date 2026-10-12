@@ -161,7 +161,67 @@ const AdminHome = () => {
 
           <section className={`${card} overflow-hidden`}>
             <h3 className="px-5 pt-5 font-semibold text-slate-900 dark:text-slate-100">{t('home.loansTitle')}</h3>
-            <div className="mt-3 overflow-x-auto">
+            {/* Phones: one card per loan — the table below needs more width than a phone has. */}
+            <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-200 md:hidden dark:divide-slate-800 dark:border-slate-800">
+              {current.map((loan) => {
+                const next =
+                  loan.summary.nextInstallment && loan.summary.state !== 'cancelled' && loan.summary.state !== 'paid'
+                    ? loan.summary.nextInstallment
+                    : null;
+                return (
+                  <li key={loan.id}>
+                    <Link
+                      to={`/users-manager/${loan.borrower_id}`}
+                      className="block px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <Avatar user={loan.borrower} size={36} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="truncate font-medium text-slate-900 dark:text-slate-100">
+                              {loan.borrower.display_name ?? loan.borrower.username}
+                            </p>
+                            <LoanStateBadge state={loan.summary.state} />
+                          </div>
+                          <p className="truncate text-sm text-slate-600 dark:text-slate-300">{loan.title}</p>
+                        </div>
+                      </div>
+
+                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        <div>
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.principal')}</dt>
+                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">{money(loan.principal_cents)}</dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.rate')}</dt>
+                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                            {formatPercent(loan.interest_rate, language)}{' '}
+                            {t(loan.rate_period === 'annual' ? 'loans.perYearShort' : 'loans.perMonthShort')}
+                          </dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.nextPayment')}</dt>
+                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
+                            {next ? `${money(next.amountDueCents)} · ${formatDate(next.dueOn, language)}` : '—'}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--series-track)]">
+                          <div className="h-full rounded-full bg-[var(--series-principal)]" style={{ width: `${loan.summary.percentPaid}%` }} />
+                        </div>
+                        <span className="w-12 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                          {formatPercent(loan.summary.percentPaid, language)}
+                        </span>
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <div className="mt-3 hidden overflow-x-auto md:block">
               <table className="w-full min-w-[760px] text-sm">
                 <thead className="border-y border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
                   <tr>
