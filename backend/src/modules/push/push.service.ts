@@ -39,6 +39,9 @@ export interface PushDevice {
   lastSentAt: string | null;
 }
 
+/** Devices one user may have notifications on: the oldest beyond this are dropped, so nobody can pile up endpoints. */
+const MAX_DEVICES_PER_USER = 10;
+
 /** Apple (Safari / iOS home screen apps), Google (Chrome, Edge on Android), Mozilla, Microsoft. */
 const PUSH_HOSTS = [/(^|\.)push\.apple\.com$/, /^fcm\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)notify\.windows\.com$/];
 
@@ -123,6 +126,13 @@ export class PushService {
            user_agent = excluded.user_agent`,
       )
       .run(randomUUID(), userId, endpoint, p256dh, auth, userAgent?.slice(0, 300) ?? null);
+    // Every push fans out to each device, so the list is capped: the oldest go first.
+    this.db
+      .prepare(
+        `DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN (
+           SELECT id FROM push_subscriptions WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?)`,
+      )
+      .run(userId, userId, MAX_DEVICES_PER_USER);
   }
 
   unsubscribe(userId: string, endpoint: unknown): void {

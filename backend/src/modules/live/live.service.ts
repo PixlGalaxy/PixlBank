@@ -4,6 +4,9 @@ interface Subscriber {
   send: () => void;
 }
 
+/** Open pages one user may keep listening at once: plenty for tabs and devices, too few to exhaust connections. */
+export const MAX_STREAMS_PER_USER = 10;
+
 /**
  * "Something you're looking at changed" pings for open pages. Events carry no
  * data — the page just reloads what it shows through the normal, permission-
@@ -12,6 +15,13 @@ interface Subscriber {
  */
 export class LiveEvents {
   private subscribers = new Set<Subscriber>();
+
+  /** How many streams a user has open — checked before accepting another. */
+  openStreams(userId: string): number {
+    let count = 0;
+    for (const s of this.subscribers) if (s.userId === userId) count++;
+    return count;
+  }
 
   subscribe(subscriber: Subscriber): () => void {
     this.subscribers.add(subscriber);
