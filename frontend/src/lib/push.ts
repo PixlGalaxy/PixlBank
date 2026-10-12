@@ -69,10 +69,23 @@ export async function enablePush(): Promise<PushState> {
   if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'off';
   const registration = await navigator.serviceWorker.ready;
   const { publicKey } = await pushApi.key();
+  const serverKey = keyBytes(publicKey);
   let subscription = await registration.pushManager.getSubscription();
-  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
+  // A subscription made against another key (a reset database, another server) gets every push
+  // refused (Apple: BadJwtToken), so it's replaced rather than reused.
+  if (subscription && !sameKey(subscription.options.applicationServerKey, serverKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+  subscription ??= await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey });
   await pushApi.subscribe(subscription.toJSON());
   return 'on';
+}
+
+function sameKey(a: ArrayBuffer | null, b: Uint8Array): boolean {
+  if (!a) return false;
+  const bytes = new Uint8Array(a);
+  return bytes.length === b.length && bytes.every((value, i) => value === b[i]);
 }
 
 /** Stops notifications here, on the server and in the browser. */

@@ -150,12 +150,19 @@ export class PushService {
           return null;
         } catch (err) {
           // The push service's own reason (e.g. Apple's {"reason":"BadJwtToken"}) is in the body, not the message.
-          const reason =
+          let reason =
             err instanceof WebPushError
               ? `${err.statusCode} ${err.body?.trim() || err.message}`.slice(0, 300)
               : err instanceof Error
                 ? err.message
                 : String(err);
+          // A signature is only valid for a while, so a server clock that's off gets every push refused
+          // (Apple: BadJwtToken). The push service's own Date header says by how much.
+          if (err instanceof WebPushError) {
+            const theirs = Date.parse(String(err.headers?.date ?? ''));
+            const skewMinutes = Number.isNaN(theirs) ? 0 : Math.round((Date.now() - theirs) / 60_000);
+            if (Math.abs(skewMinutes) >= 5) reason += ` — this server's clock is ${Math.abs(skewMinutes)} min ${skewMinutes > 0 ? 'ahead' : 'behind'}`;
+          }
           // 404/410: the device unsubscribed or the app was removed — forget it.
           if (err instanceof WebPushError && (err.statusCode === 404 || err.statusCode === 410)) {
             this.db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(row.id);
