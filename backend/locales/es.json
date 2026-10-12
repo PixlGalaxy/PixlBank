@@ -459,6 +459,8 @@
   "loans.progress": "Pagado",
   "loans.nextPayment": "Próximo pago",
   "loans.termsLine": "{principal} al {rate} {period} · {count} cuotas · pago {frequency} · {method}",
+  "loans.noInterest": "Préstamo sin intereses",
+  "loans.termsLineNoInterest": "{principal} sin intereses · {count} cuotas · pago {frequency}",
   "loans.disbursedLine": "Prestado el {date}",
   "loans.interestEarned": "Interés ganado",
   "loans.interestPaid": "Interés pagado",

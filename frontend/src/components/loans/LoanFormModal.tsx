@@ -73,6 +73,7 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
   const [currency, setCurrency] = useState(loan?.currency ?? 'USD');
   const [principal, setPrincipal] = useState(loan ? String(loan.principal_cents / 100) : '');
   const [interestRate, setInterestRate] = useState(loan ? String(loan.interest_rate) : '');
+  const [noInterest, setNoInterest] = useState(loan?.interest_rate === 0);
   const [ratePeriod, setRatePeriod] = useState<RatePeriod>(loan?.rate_period ?? 'annual');
   const [interestMethod, setInterestMethod] = useState<InterestMethod>(loan?.interest_method ?? 'french');
   const [frequency, setFrequency] = useState<PaymentFrequency>(loan?.frequency ?? 'monthly');
@@ -89,7 +90,7 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
 
   const termsInput = {
     principal: Number(principal.replace(',', '.')),
-    interestRate: Number(interestRate.replace(',', '.') || '0'),
+    interestRate: noInterest ? 0 : Number(interestRate.replace(',', '.') || '0'),
     ratePeriod,
     interestMethod,
     frequency,
@@ -217,52 +218,67 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
             </datalist>
           </div>
 
-          <div>
-            <label className={label} htmlFor="l-rate">
-              {t('loans.interestRate')}
-            </label>
-            <div className="relative">
-              <input
-                id="l-rate"
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={interestRate}
-                onChange={(e) => setInterestRate(e.target.value)}
-                className={`${input} pr-8`}
-                required
-              />
-              <span className="absolute right-3 top-2 text-sm text-slate-400">%</span>
-            </div>
-          </div>
-
-          <div>
-            <span className={label}>{t('loans.ratePeriod')}</span>
-            <Segmented
-              value={ratePeriod}
-              onChange={setRatePeriod}
-              options={[
-                { value: 'annual', labelKey: 'loans.rateAnnual' },
-                { value: 'monthly', labelKey: 'loans.rateMonthly' },
-              ]}
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={noInterest}
+              onChange={(e) => setNoInterest(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-[var(--accent-600)] focus:ring-[var(--accent-500)]"
             />
-          </div>
+            {t('loans.noInterest')}
+          </label>
 
-          <div>
-            <span className={label}>{t('loans.method')}</span>
-            <Segmented
-              value={interestMethod}
-              onChange={setInterestMethod}
-              options={[
-                { value: 'french', labelKey: 'loans.methodFrench' },
-                { value: 'simple', labelKey: 'loans.methodSimple' },
-              ]}
-            />
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t(interestMethod === 'french' ? 'loans.methodFrenchHint' : 'loans.methodSimpleHint')}
-            </p>
-          </div>
+          {/* An interest-free loan just splits the amount evenly — rate, period and method don't apply. */}
+          {!noInterest && (
+            <>
+              <div>
+                <label className={label} htmlFor="l-rate">
+                  {t('loans.interestRate')}
+                </label>
+                <div className="relative">
+                  <input
+                    id="l-rate"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={interestRate}
+                    onChange={(e) => setInterestRate(e.target.value)}
+                    className={`${input} pr-8`}
+                    required
+                  />
+                  <span className="absolute right-3 top-2 text-sm text-slate-400">%</span>
+                </div>
+              </div>
+
+              <div>
+                <span className={label}>{t('loans.ratePeriod')}</span>
+                <Segmented
+                  value={ratePeriod}
+                  onChange={setRatePeriod}
+                  options={[
+                    { value: 'annual', labelKey: 'loans.rateAnnual' },
+                    { value: 'monthly', labelKey: 'loans.rateMonthly' },
+                  ]}
+                />
+              </div>
+
+              <div>
+                <span className={label}>{t('loans.method')}</span>
+                <Segmented
+                  value={interestMethod}
+                  onChange={setInterestMethod}
+                  options={[
+                    { value: 'french', labelKey: 'loans.methodFrench' },
+                    { value: 'simple', labelKey: 'loans.methodSimple' },
+                  ]}
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t(interestMethod === 'french' ? 'loans.methodFrenchHint' : 'loans.methodSimpleHint')}
+                </p>
+              </div>
+            </>
+          )}
 
           <div>
             <span className={label}>{t('loans.frequency')}</span>

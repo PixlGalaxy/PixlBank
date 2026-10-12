@@ -459,6 +459,8 @@
   "loans.progress": "Paid",
   "loans.nextPayment": "Next payment",
   "loans.termsLine": "{principal} at {rate} {period} · {count} {frequency} installments · {method}",
+  "loans.noInterest": "Interest-free loan",
+  "loans.termsLineNoInterest": "{principal} interest-free · {count} {frequency} installments",
   "loans.disbursedLine": "Lent on {date}",
   "loans.interestEarned": "Interest earned",
   "loans.interestPaid": "Interest paid",

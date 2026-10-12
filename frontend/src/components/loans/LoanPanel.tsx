@@ -99,14 +99,20 @@ const LoanPanel = ({ loan, isAdmin, borrowers = [], onChanged }: Props) => {
             <LoanStateBadge state={s.state} />
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {t('loans.termsLine', {
-              principal: money(loan.principal_cents),
-              rate: formatPercent(loan.interest_rate, language),
-              period: t(loan.rate_period === 'annual' ? 'loans.perYear' : 'loans.perMonth'),
-              count: loan.installments_count,
-              frequency: t(FREQ_KEY[loan.frequency]).toLowerCase(),
-              method: t(loan.interest_method === 'french' ? 'loans.methodFrench' : 'loans.methodSimple'),
-            })}
+            {loan.interest_rate === 0
+              ? t('loans.termsLineNoInterest', {
+                  principal: money(loan.principal_cents),
+                  count: loan.installments_count,
+                  frequency: t(FREQ_KEY[loan.frequency]).toLowerCase(),
+                })
+              : t('loans.termsLine', {
+                  principal: money(loan.principal_cents),
+                  rate: formatPercent(loan.interest_rate, language),
+                  period: t(loan.rate_period === 'annual' ? 'loans.perYear' : 'loans.perMonth'),
+                  count: loan.installments_count,
+                  frequency: t(FREQ_KEY[loan.frequency]).toLowerCase(),
+                  method: t(loan.interest_method === 'french' ? 'loans.methodFrench' : 'loans.methodSimple'),
+                })}
           </p>
           {!isAdmin && loan.lender ? (
             <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
@@ -166,12 +172,12 @@ const LoanPanel = ({ loan, isAdmin, borrowers = [], onChanged }: Props) => {
             combined={!isAdmin}
           />
           {/* The interest figures are the lender's earnings: never shown to the debtor. */}
-          <dl className={`mt-4 grid grid-cols-2 gap-3 text-sm ${isAdmin ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+          <dl className={`mt-4 grid grid-cols-2 gap-3 text-sm ${isAdmin && loan.interest_rate > 0 ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
             {[
               [t('loans.totalToPay'), money(s.totalDueCents)],
               [t('charts.paid'), money(s.paidCents)],
               [t('charts.remaining'), money(s.remainingCents)],
-              ...(isAdmin ? [[t('loans.interestEarned'), `${money(s.interestCollectedCents)} / ${money(s.totalInterestCents)}`]] : []),
+              ...(isAdmin && loan.interest_rate > 0 ? [[t('loans.interestEarned'), `${money(s.interestCollectedCents)} / ${money(s.totalInterestCents)}`]] : []),
             ].map(([name, value]) => (
               <div key={name}>
                 <dt className="text-xs text-slate-500 dark:text-slate-400">{name}</dt>
