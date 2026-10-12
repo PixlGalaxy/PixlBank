@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { User } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 import { dictionaries, isLanguage, type Language, type TranslationKey } from './translations';
+import { usePrivacy } from '../lib/privacy';
 
 type Translate = (key: TranslationKey, vars?: Record<string, string | number>) => string;
 
@@ -56,6 +57,9 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export function useI18n() {
   const ctx = useContext(I18nContext);
+  // Every screen that formats money also translates, so subscribing here re-renders them all when
+  // "hide amounts" flips — formatMoney itself is a plain function and can't subscribe.
+  usePrivacy();
   if (!ctx) throw new Error('useI18n must be used within I18nProvider');
   return ctx;
 }

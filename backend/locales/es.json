@@ -110,6 +110,8 @@
   "nav.home": "Inicio",
   "nav.account": "Mi cuenta",
   "nav.settings": "Ajustes",
+  "nav.hideAmounts": "Ocultar montos",
+  "nav.showAmounts": "Mostrar montos",
   "nav.logout": "Cerrar sesión",
   "footer.copyright": "© {year} PixlBank",
   "footer.viewSource": "Código fuente",

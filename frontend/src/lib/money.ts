@@ -1,20 +1,38 @@
+import { amountsHidden } from './privacy';
+
+const NUMBER_PARTS = new Set(['minusSign', 'integer', 'group', 'decimal', 'fraction', 'compact']);
+
+/** The currency without the number: "S/ ••••" — what "hide amounts" shows instead of a figure. */
+function masked(formatter: Intl.NumberFormat): string {
+  let done = false;
+  return formatter
+    .formatToParts(0)
+    .map((part) => {
+      if (!NUMBER_PARTS.has(part.type)) return part.value;
+      if (done) return '';
+      done = true;
+      return '••••';
+    })
+    .join('');
+}
+
 /** Amounts travel as integer cents; this is the only place they become text. */
 export function formatMoney(cents: number, currency: string, language: string): string {
   try {
-    return new Intl.NumberFormat(language, { style: 'currency', currency }).format(cents / 100);
+    const formatter = new Intl.NumberFormat(language, { style: 'currency', currency });
+    return amountsHidden() ? masked(formatter) : formatter.format(cents / 100);
   } catch {
-    return `${(cents / 100).toFixed(2)} ${currency}`;
+    return amountsHidden() ? `•••• ${currency}` : `${(cents / 100).toFixed(2)} ${currency}`;
   }
 }
 
 /** Short form for chart axes: "S/ 12K". */
 export function formatMoneyCompact(cents: number, currency: string, language: string): string {
   try {
-    return new Intl.NumberFormat(language, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(
-      cents / 100,
-    );
+    const formatter = new Intl.NumberFormat(language, { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 });
+    return amountsHidden() ? masked(formatter) : formatter.format(cents / 100);
   } catch {
-    return `${Math.round(cents / 100)} ${currency}`;
+    return amountsHidden() ? `•••• ${currency}` : `${Math.round(cents / 100)} ${currency}`;
   }
 }
 
