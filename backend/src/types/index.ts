@@ -87,6 +87,8 @@ export interface Loan {
   disbursed_on: string;
   first_due_on: string;
   status: 'active' | 'cancelled';
+  /** 1: paying ahead never reduces the interest agreed in the original plan — see allocate(). */
+  prepay_keeps_interest: number;
   created_at: string;
   updated_at: string;
 }

@@ -32,6 +32,7 @@ export interface LoanInput {
   disbursedOn?: unknown;
   firstDueOn?: unknown;
   status?: unknown;
+  prepayKeepsInterest?: unknown;
 }
 
 export type InstallmentState = 'paid' | 'partial' | 'overdue' | 'pending';
@@ -142,11 +143,19 @@ function periodIndex(installments: Installment[], paidOn: string, frequency: Loa
  * due date...) derives from this one pass, so nothing can drift out of sync.
  *
  * A payment first covers whatever is due up to its period's installment (see
- * `periodIndex`). Anything beyond that is a
- * prepayment: it goes straight to principal — booked on the last installment
- * covered — and the installments still ahead are re-amortized over the new
- * balance, so they shrink (to zero once the balance is gone). Paying less just
- * leaves that installment partly unpaid, and the next payment covers it first.
+ * `periodIndex`). Anything beyond that is a prepayment: it goes straight to
+ * principal — booked on the last installment covered — and the installments
+ * still ahead shrink. How depends on the loan:
+ *
+ * - prepay_keeps_interest (the default): each keeps the interest of the
+ *   original plan and only its principal goes down, so the lender earns the
+ *   agreed interest no matter how early the debt is repaid. Once the principal
+ *   is gone, money left over settles that remaining interest ahead of time.
+ * - otherwise: they're re-amortized over the new balance, so paying ahead
+ *   also saves interest, and they drop to zero once the balance is gone.
+ *
+ * Paying less just leaves that installment partly unpaid, and the next payment
+ * covers it first.
  */
 export function allocate(loan: Loan, stored: Installment[], payments: Payment[], now = today()) {
   const approved = payments
@@ -156,6 +165,7 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
   // The stored rows are the original plan; prepayments rewrite the copies.
   const installments = stored.map((inst) => ({ ...inst }));
   const r = periodRate(loan.interest_rate, loan.rate_period, loan.frequency);
+  const keepInterest = loan.prepay_keeps_interest === 1;
   const paidPerInstallment = installments.map(() => ({ interest: 0, principal: 0 }));
   const completedOn: (string | null)[] = installments.map(() => null);
   const splits = new Map<string, { interest: number; principal: number }>();
@@ -166,7 +176,45 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
     let left = payment.amount_cents;
     const split = { interest: 0, principal: 0 };
     const lastCovered = periodIndex(installments, payment.paid_on, loan.frequency);
-    while (left > 0 && cursor <= lastCovered && cursor < installments.length) {
+    while (left > 0 && cursor < installments.length) {
+      // Past the payment's own period with money left over: a prepayment.
+      if (cursor > lastCovered) {
+        const ahead = installments.slice(cursor);
+        const balance = ahead.reduce((s, inst) => s + inst.principal_cents, 0) - paidPerInstallment[cursor]!.principal;
+        if (balance > 0) {
+          const prepaid = Math.min(left, balance);
+          const booked = installments[cursor - 1]!;
+          booked.principal_cents += prepaid;
+          booked.amount_cents += prepaid;
+          paidPerInstallment[cursor - 1]!.principal += prepaid;
+          split.principal += prepaid;
+          left -= prepaid;
+          const rest = balance - prepaid;
+          if (keepInterest) {
+            // Same interest as planned; each principal shrinks by the same ratio, so no
+            // installment ever grows (rounding leftovers go to the last one).
+            let assigned = 0;
+            ahead.forEach((inst, i) => {
+              inst.principal_cents =
+                i === ahead.length - 1 ? rest - assigned : Math.floor((inst.principal_cents * rest) / balance);
+              assigned += inst.principal_cents;
+              inst.amount_cents = inst.principal_cents + inst.interest_cents;
+            });
+          } else {
+            amortize(rest, r, ahead.length, loan.interest_method).forEach((row, i) => {
+              const inst = ahead[i]!;
+              inst.principal_cents = row.principalCents;
+              inst.interest_cents = row.interestCents;
+              inst.amount_cents = row.principalCents + row.interestCents;
+            });
+          }
+          continue;
+        }
+        // No principal left. With the interest kept, the money settles the interest
+        // still to come; otherwise nothing more is owed.
+        if (!keepInterest) break;
+      }
+
       const inst = installments[cursor]!;
       const done = paidPerInstallment[cursor]!;
       const interestTake = Math.min(left, inst.interest_cents - done.interest);
@@ -183,24 +231,6 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
       }
     }
 
-    // Past the payment's own period with money left over: prepay principal and re-amortize the rest.
-    if (left > 0 && cursor > 0 && cursor < installments.length) {
-      const ahead = installments.slice(cursor);
-      const balance = ahead.reduce((s, inst) => s + inst.principal_cents, 0);
-      const prepaid = Math.min(left, balance);
-      const booked = installments[cursor - 1]!;
-      booked.principal_cents += prepaid;
-      booked.amount_cents += prepaid;
-      paidPerInstallment[cursor - 1]!.principal += prepaid;
-      split.principal += prepaid;
-      left -= prepaid;
-      amortize(balance - prepaid, r, ahead.length, loan.interest_method).forEach((row, i) => {
-        const inst = ahead[i]!;
-        inst.principal_cents = row.principalCents;
-        inst.interest_cents = row.interestCents;
-        inst.amount_cents = row.principalCents + row.interestCents;
-      });
-    }
     // Installments a prepayment brought down to nothing are settled by it.
     while (cursor < installments.length && installments[cursor]!.amount_cents === 0) {
       completedOn[cursor] = payment.paid_on;
@@ -382,6 +412,9 @@ export class LoansService {
     const status = pick(input.status, existing?.status ?? 'active');
     if (status !== 'active' && status !== 'cancelled') throw badRequest('error.invalidInput');
 
+    const keeps = pick(input.prepayKeepsInterest, existing ? existing.prepay_keeps_interest === 1 : true);
+    if (typeof keeps !== 'boolean') throw badRequest('error.invalidInput');
+
     return {
       borrowerId,
       title: title.trim(),
@@ -396,6 +429,7 @@ export class LoansService {
       disbursedOn,
       firstDueOn,
       status,
+      prepayKeepsInterest: keeps ? 1 : 0,
     };
   }
 
@@ -417,8 +451,8 @@ export class LoansService {
       this.db
         .prepare(
           `INSERT INTO loans (id, borrower_id, title, notes, currency, principal_cents, interest_rate, rate_period,
-             interest_method, frequency, installments_count, disbursed_on, first_due_on, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             interest_method, frequency, installments_count, disbursed_on, first_due_on, status, prepay_keeps_interest)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -435,6 +469,7 @@ export class LoansService {
           v.disbursedOn,
           v.firstDueOn,
           v.status,
+          v.prepayKeepsInterest,
         );
       this.writeSchedule(id, v);
     })();
@@ -451,7 +486,7 @@ export class LoansService {
         .prepare(
           `UPDATE loans SET borrower_id = ?, title = ?, notes = ?, currency = ?, principal_cents = ?, interest_rate = ?,
              rate_period = ?, interest_method = ?, frequency = ?, installments_count = ?, disbursed_on = ?,
-             first_due_on = ?, status = ?, updated_at = datetime('now')
+             first_due_on = ?, status = ?, prepay_keeps_interest = ?, updated_at = datetime('now')
            WHERE id = ?`,
         )
         .run(
@@ -468,6 +503,7 @@ export class LoansService {
           v.disbursedOn,
           v.firstDueOn,
           v.status,
+          v.prepayKeepsInterest,
           id,
         );
       const termsChanged =

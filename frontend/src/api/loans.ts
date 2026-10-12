@@ -112,6 +112,8 @@ export interface Loan {
   disbursed_on: string;
   first_due_on: string;
   status: 'active' | 'cancelled';
+  /** 1: paying ahead never reduces the agreed interest. */
+  prepay_keeps_interest: number;
   created_at: string;
   updated_at: string;
   borrower: Pick<User, 'id' | 'username' | 'display_name' | 'email' | 'avatar_path' | 'updated_at'>;
@@ -140,6 +142,7 @@ export interface LoanInput {
   disbursedOn: string;
   firstDueOn: string;
   status?: 'active' | 'cancelled';
+  prepayKeepsInterest: boolean;
 }
 
 export interface ScheduledInstallment {

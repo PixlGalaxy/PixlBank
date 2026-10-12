@@ -74,6 +74,7 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
   const [principal, setPrincipal] = useState(loan ? String(loan.principal_cents / 100) : '');
   const [interestRate, setInterestRate] = useState(loan ? String(loan.interest_rate) : '');
   const [noInterest, setNoInterest] = useState(loan?.interest_rate === 0);
+  const [keepInterest, setKeepInterest] = useState(loan ? loan.prepay_keeps_interest === 1 : true);
   const [ratePeriod, setRatePeriod] = useState<RatePeriod>(loan?.rate_period ?? 'annual');
   const [interestMethod, setInterestMethod] = useState<InterestMethod>(loan?.interest_method ?? 'french');
   const [frequency, setFrequency] = useState<PaymentFrequency>(loan?.frequency ?? 'monthly');
@@ -125,6 +126,7 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
       ...termsInput,
       disbursedOn,
       status: cancelled ? 'cancelled' : 'active',
+      prepayKeepsInterest: keepInterest,
     };
     try {
       onSaved(loan ? await loansApi.update(loan.id, body) : await loansApi.create(body));
@@ -275,6 +277,21 @@ const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
                 />
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {t(interestMethod === 'french' ? 'loans.methodFrenchHint' : 'loans.methodSimpleHint')}
+                </p>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={keepInterest}
+                    onChange={(e) => setKeepInterest(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[var(--accent-600)] focus:ring-[var(--accent-500)]"
+                  />
+                  {t('loans.prepayKeepsInterest')}
+                </label>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t(keepInterest ? 'loans.prepayKeepsInterestHint' : 'loans.prepaySavesInterestHint')}
                 </p>
               </div>
             </>
