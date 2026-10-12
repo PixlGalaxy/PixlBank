@@ -18,6 +18,9 @@ import ProgressChart from '../../components/charts/ProgressChart';
 import CurrencyTabs from '../../components/loans/CurrencyTabs';
 import LoanPanel from '../../components/loans/LoanPanel';
 import LoanFormModal from '../../components/loans/LoanFormModal';
+import InvestmentPanel from '../../components/investments/InvestmentPanel';
+import InvestmentFormModal from '../../components/investments/InvestmentFormModal';
+import { investmentsApi, type Investment } from '../../api/investments';
 import { btn, card, errorBox } from '../../components/ui/styles';
 import UserFormModal from '../admin/UserFormModal';
 
@@ -27,18 +30,21 @@ const BorrowerPage = () => {
   const { t, language } = useI18n();
   const [user, setUser] = useState<User | null>(null);
   const [loans, setLoans] = useState<LoanDetail[] | null>(null);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [error, setError] = useState('');
   const [score, setScore] = useState<CreditScore | null>(null);
   const [currency, setCurrency] = useState('');
-  const [modal, setModal] = useState<'loan' | 'user' | null>(null);
+  const [modal, setModal] = useState<'loan' | 'investment' | 'user' | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [users, own, userScore] = await Promise.all([
+      const [users, own, userScore, theirInvestments] = await Promise.all([
         usersApi.list(),
         loansApi.listDetailed(userId),
         scoreApi.forUser(userId),
+        investmentsApi.list(userId),
       ]);
+      setInvestments(theirInvestments);
       setScore(userScore);
       const found = users.find((u) => u.id === userId && u.role === 'user');
       if (!found) {
@@ -111,9 +117,12 @@ const BorrowerPage = () => {
           </div>
           {user.notes && <p className="mt-2 whitespace-pre-line text-sm text-slate-600 dark:text-slate-300">{user.notes}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setModal('user')} className={btn.secondary}>
             <Pencil size={16} /> {t('users.edit')}
+          </button>
+          <button type="button" onClick={() => setModal('investment')} className={btn.secondary}>
+            <TrendingUp size={16} /> {t('investments.new')}
           </button>
           <button type="button" onClick={() => setModal('loan')} className={btn.primary}>
             <Plus size={16} /> {t('loans.new')}
@@ -123,11 +132,24 @@ const BorrowerPage = () => {
 
       {score && <CreditScoreCard score={score} forLender />}
 
-      {loans.length === 0 ? (
-        <div className={`${card} p-12 text-center`}>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{t('manager.noLoans')}</p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('manager.noLoansHint')}</p>
+      {investments.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <TrendingUp size={16} /> {t('investments.sectionTitle')}
+          </h2>
+          {investments.map((investment) => (
+            <InvestmentPanel key={investment.id} investment={investment} canManage onChanged={() => void load()} />
+          ))}
         </div>
+      )}
+
+      {loans.length === 0 ? (
+        investments.length === 0 && (
+          <div className={`${card} p-12 text-center`}>
+            <p className="font-medium text-slate-900 dark:text-slate-100">{t('manager.noLoans')}</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('manager.noLoansHint')}</p>
+          </div>
+        )
       ) : (
         <>
           <div className="flex justify-end">
@@ -182,6 +204,17 @@ const BorrowerPage = () => {
           onSaved={(loan) => {
             setModal(null);
             setCurrency(loan.currency);
+            void load();
+          }}
+        />
+      )}
+      {modal === 'investment' && (
+        <InvestmentFormModal
+          investment={null}
+          ownerId={user.id}
+          onClose={() => setModal(null)}
+          onSaved={() => {
+            setModal(null);
             void load();
           }}
         />

@@ -190,8 +190,9 @@ export interface CreditScore {
 }
 
 export const scoreApi = {
-  mine: () => api.get<CreditScore>('/loans/score/me'),
-  forUser: (userId: string) => api.get<CreditScore>(`/loans/score/${userId}`),
+  /** null when the account has no loans (only investments, or nothing yet). */
+  mine: () => api.get<CreditScore | null>('/loans/score/me'),
+  forUser: (userId: string) => api.get<CreditScore | null>(`/loans/score/${userId}`),
   all: () => api.get<Record<string, CreditScore>>('/loans/scores'),
 };
 

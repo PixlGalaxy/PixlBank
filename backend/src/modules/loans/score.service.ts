@@ -133,7 +133,10 @@ export class ScoreService {
     return { points: Math.max(0, Math.min(100, START + delta)), factors, hasHistory };
   }
 
-  forBorrower(borrowerId: string): CreditScore {
+  /** null for an account that has never had a loan (only investments, say): there's nothing to score. */
+  forBorrower(borrowerId: string): CreditScore | null {
+    const hasLoan = this.db.prepare('SELECT 1 FROM loans WHERE borrower_id = ? LIMIT 1').get(borrowerId);
+    if (!hasLoan) return null;
     const now = today();
     const current = this.points(borrowerId, now);
     const previous = this.points(borrowerId, addDays(now, -30));
@@ -152,8 +155,14 @@ export class ScoreService {
   }
 
   /** Every debtor's score at once, for the User Manager cards. */
+  /** Only accounts with at least one loan appear. */
   all(): Record<string, CreditScore> {
     const ids = this.db.prepare("SELECT id FROM users WHERE role = 'user'").all() as { id: string }[];
-    return Object.fromEntries(ids.map(({ id }) => [id, this.forBorrower(id)]));
+    return Object.fromEntries(
+      ids.flatMap(({ id }) => {
+        const score = this.forBorrower(id);
+        return score ? [[id, score]] : [];
+      }),
+    );
   }
 }

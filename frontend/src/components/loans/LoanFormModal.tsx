@@ -12,9 +12,9 @@ import {
 import type { User } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useI18n } from '../../i18n/I18nContext';
-import type { TranslationKey } from '../../i18n/translations';
 import { COMMON_CURRENCIES, formatDate, formatMoney, todayIso } from '../../lib/money';
 import Modal from '../ui/Modal';
+import Segmented from '../ui/Segmented';
 import { btn, errorBox, input, label } from '../ui/styles';
 
 interface Props {
@@ -33,36 +33,6 @@ function nextPeriod(frequency: PaymentFrequency): string {
   else d.setDate(d.getDate() + (frequency === 'weekly' ? 7 : 14));
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
-const Segmented = <T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; labelKey: TranslationKey }[];
-  onChange: (v: T) => void;
-}) => {
-  const { t } = useI18n();
-  return (
-    <div className="flex rounded-lg border border-slate-300 p-0.5 dark:border-slate-600">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          onClick={() => onChange(o.value)}
-          className={`flex-1 rounded-md px-2.5 py-1.5 text-sm font-medium transition ${
-            value === o.value
-              ? 'bg-[var(--accent-600)] text-white'
-              : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
-          }`}
-        >
-          {t(o.labelKey)}
-        </button>
-      ))}
-    </div>
-  );
-};
 
 const LoanFormModal = ({ loan, borrowers, onClose, onSaved }: Props) => {
   const { t, language } = useI18n();

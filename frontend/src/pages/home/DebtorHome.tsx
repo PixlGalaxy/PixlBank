@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarClock, CircleCheck, Loader2, Percent, Wallet } from 'lucide-react';
+import { CalendarClock, CircleCheck, Loader2, Percent, TrendingUp, Wallet } from 'lucide-react';
 import { loansApi, scoreApi, type CreditScore, type LoanDetail } from '../../api/loans';
 import CreditScoreCard from '../../components/loans/CreditScore';
 import { ApiError } from '../../api/client';
@@ -12,6 +12,8 @@ import { usePollWhileAnalyzing } from '../../hooks/usePollWhileAnalyzing';
 import { useLiveUpdates } from '../../hooks/useLiveUpdates';
 import StatTile from '../../components/charts/StatTile';
 import LoanPanel from '../../components/loans/LoanPanel';
+import InvestmentPanel from '../../components/investments/InvestmentPanel';
+import { investmentsApi, type Investment } from '../../api/investments';
 import { card, errorBox } from '../../components/ui/styles';
 
 /** A debtor's view: what they owe the lender, what they've paid, and when the next payment is due. */
@@ -22,10 +24,12 @@ const DebtorHome = () => {
   const [loans, setLoans] = useState<LoanDetail[] | null>(null);
   const [error, setError] = useState('');
   const [score, setScore] = useState<CreditScore | null>(null);
+  const [investments, setInvestments] = useState<Investment[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const [mine, myScore] = await Promise.all([loansApi.mine(), scoreApi.mine()]);
+      const [mine, myScore, myInvestments] = await Promise.all([loansApi.mine(), scoreApi.mine(), investmentsApi.mine()]);
+      setInvestments(myInvestments);
       setLoans(mine);
       setScore(myScore);
     } catch (err) {
@@ -70,11 +74,13 @@ const DebtorHome = () => {
       </div>
 
       {loans.length === 0 ? (
-        <div className={`${card} flex flex-col items-center gap-3 p-12 text-center`}>
-          <CircleCheck size={40} className="text-emerald-500" />
-          <p className="font-medium text-slate-900 dark:text-slate-100">{t('home.noDebtsTitle')}</p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t('home.noDebtsHint')}</p>
-        </div>
+        investments.length === 0 && (
+          <div className={`${card} flex flex-col items-center gap-3 p-12 text-center`}>
+            <CircleCheck size={40} className="text-emerald-500" />
+            <p className="font-medium text-slate-900 dark:text-slate-100">{t('home.noDebtsTitle')}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{t('home.noDebtsHint')}</p>
+          </div>
+        )
       ) : (
         <>
           {groups.map((g) => (
@@ -132,6 +138,17 @@ const DebtorHome = () => {
             </div>
           )}
         </>
+      )}
+
+      {investments.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <TrendingUp size={16} /> {t('investments.sectionTitle')}
+          </h2>
+          {investments.map((investment) => (
+            <InvestmentPanel key={investment.id} investment={investment} canManage={false} onChanged={() => void load()} />
+          ))}
+        </div>
       )}
     </div>
   );

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ChevronRight, Hourglass, Loader2, Search, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Hourglass, Loader2, Search, TrendingUp, UserPlus, Users } from 'lucide-react';
 import { usersApi } from '../../api/users';
 import { loansApi, scoreApi, type CreditScore, type LoanDetail } from '../../api/loans';
+import { investmentsApi, type Investment } from '../../api/investments';
 import { GradeChip } from '../../components/loans/CreditScore';
 import type { User } from '../../api/types';
 import { ApiError } from '../../api/client';
@@ -24,6 +25,7 @@ const UserManagerPage = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<User[] | null>(null);
   const [loans, setLoans] = useState<LoanDetail[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [scores, setScores] = useState<Record<string, CreditScore>>({});
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -31,8 +33,14 @@ const UserManagerPage = () => {
 
   const load = useCallback(async () => {
     try {
-      const [allUsers, allLoans, allScores] = await Promise.all([usersApi.list(), loansApi.listDetailed(), scoreApi.all()]);
+      const [allUsers, allLoans, allScores, allInvestments] = await Promise.all([
+        usersApi.list(),
+        loansApi.listDetailed(),
+        scoreApi.all(),
+        investmentsApi.list(),
+      ]);
       setScores(allScores);
+      setInvestments(allInvestments);
       setUsers(allUsers.filter((u) => u.role === 'user'));
       setLoans(allLoans);
     } catch (err) {
@@ -95,6 +103,13 @@ const UserManagerPage = () => {
         <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {filtered.map((u) => {
             const own = byBorrower.get(u.id) ?? [];
+            const ownInvestments = investments.filter((i) => i.owner_id === u.id);
+            const investmentGroups = [...byCurrency(ownInvestments).entries()].map(([c, list]) => ({
+              currency: c,
+              worth: list.reduce((s, i) => s + i.summary.valueTodayCents, 0),
+              interest: list.reduce((s, i) => s + i.summary.interestToDateCents, 0),
+              invested: list.reduce((s, i) => s + i.summary.contributedCents - i.summary.withdrawnCents, 0),
+            }));
             const groups = [...byCurrency(own).entries()].map(([c, list]) => totalsFor(c, list));
             const overdue = own.filter((l) => l.summary.state === 'overdue').length;
             const pending = own.reduce((s, l) => s + l.summary.pendingReviewCount, 0);
@@ -114,7 +129,7 @@ const UserManagerPage = () => {
                 </div>
 
                 {groups.length === 0 ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{t('manager.noLoans')}</p>
+                  ownInvestments.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">{t('manager.noLoans')}</p>
                 ) : (
                   groups.map((g) => (
                     <div key={g.currency}>
@@ -139,11 +154,47 @@ const UserManagerPage = () => {
                   ))
                 )}
 
+                {investmentGroups.map((g) => (
+                  <div key={`inv-${g.currency}`}>
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                        <TrendingUp size={14} className="text-violet-500" /> {t('manager.investmentsWorth')}
+                      </span>
+                      <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                        {formatMoney(g.worth, g.currency, language)}
+                      </span>
+                    </div>
+                    {/* Like the loans' "owes" bar: how much of what it's worth is money put in vs interest earned. */}
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <div className="flex h-2 flex-1 overflow-hidden rounded-full bg-[var(--series-track)]">
+                        <div className="h-full bg-[var(--series-principal)]" style={{ width: `${g.worth > 0 ? (Math.min(g.invested, g.worth) / g.worth) * 100 : 0}%` }} />
+                        <div className="h-full bg-[var(--series-investment)]" style={{ width: `${g.worth > 0 ? (Math.max(0, g.interest) / g.worth) * 100 : 0}%` }} />
+                      </div>
+                      <span className="w-12 text-right text-xs tabular-nums text-emerald-700 dark:text-emerald-400" title={t('manager.returnHint')}>
+                        +{formatPercent(g.invested > 0 ? (g.interest / g.invested) * 100 : 0, language)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {t('manager.investedLine', {
+                        invested: formatMoney(g.invested, g.currency, language),
+                        interest: formatMoney(g.interest, g.currency, language),
+                      })}
+                    </p>
+                  </div>
+                ))}
+
                 <div className="mt-auto flex flex-wrap gap-1.5">
                   {scores[u.id] && <GradeChip score={scores[u.id]!} />}
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {t('manager.loanCount', { count: own.length })}
-                  </span>
+                  {(own.length > 0 || ownInvestments.length === 0) && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      {t('manager.loanCount', { count: own.length })}
+                    </span>
+                  )}
+                  {ownInvestments.length > 0 && (
+                    <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+                      {t('manager.investmentCount', { count: ownInvestments.length })}
+                    </span>
+                  )}
                   {overdue > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
                       <AlertTriangle size={12} /> {t('manager.overdueCount', { count: overdue })}

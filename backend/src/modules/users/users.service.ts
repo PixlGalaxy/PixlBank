@@ -155,10 +155,12 @@ export class UsersService {
       | undefined;
     if (!existing) throw notFound();
     if (existing.role === 'admin') throw forbidden('users.cannotEditAdmin');
-    // Deleting would silently wipe the loan history with it; deactivate instead.
-    const { count } = this.db.prepare('SELECT COUNT(*) AS count FROM loans WHERE borrower_id = ?').get(id) as {
-      count: number;
-    };
+    // Deleting would silently wipe the loan and investment history with it; deactivate instead.
+    const { count } = this.db
+      .prepare(
+        'SELECT (SELECT COUNT(*) FROM loans WHERE borrower_id = ?) + (SELECT COUNT(*) FROM investments WHERE owner_id = ?) AS count',
+      )
+      .get(id, id) as { count: number };
     if (count > 0) throw conflict('users.hasLoans');
 
     this.db.prepare('DELETE FROM users WHERE id = ?').run(id);

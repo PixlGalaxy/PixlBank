@@ -16,6 +16,8 @@ const BACKEND_KEYS = [
   'auth.passwordTooLong',
   'auth.currentPasswordIncorrect',
   'auth.passwordUnchanged',
+  'investments.movementOutsideDates',
+  'investments.withdrawalTooLarge',
   'auth.invalidTheme',
   'auth.invalidLanguage',
   'auth.passwordChangeRequired',

@@ -33,6 +33,8 @@ import { createPaymentsRoutes } from './modules/payments/payments.routes.js';
 import { LiveEvents } from './modules/live/live.service.js';
 import { PushService } from './modules/push/push.service.js';
 import { createPushRoutes } from './modules/push/push.routes.js';
+import { InvestmentsService } from './modules/investments/investments.service.js';
+import { createInvestmentsRoutes } from './modules/investments/investments.routes.js';
 import { createLiveRoutes } from './modules/live/live.routes.js';
 
 export function createApp(db: Db, config: EnvConfig): express.Application {
@@ -118,6 +120,7 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
   app.use('/api/payments', paymentsRoutes);
   app.use('/api/live', createLiveRoutes(t, live));
   app.use('/api/push', createPushRoutes(t, push, mail));
+  app.use('/api/investments', createInvestmentsRoutes(t, new InvestmentsService(db, live)));
 
   app.use(
     '/api/admin',

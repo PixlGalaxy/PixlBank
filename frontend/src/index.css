@@ -22,6 +22,7 @@ html.dark {
   --chart-ink-muted: #64748b;
   --series-principal: #2a78d6;
   --series-interest: #eb6834;
+  --series-investment: #8b5cf6;
   --series-track: #e2e8f0;
 }
 
@@ -32,6 +33,7 @@ html.dark {
   --chart-ink-muted: #94a3b8;
   --series-principal: #3987e5;
   --series-interest: #d95926;
+  --series-investment: #a78bfa;
   --series-track: #1e293b;
 }
 

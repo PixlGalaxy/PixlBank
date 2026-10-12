@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Banknote, ChevronRight, Hourglass, Loader2, PiggyBank, TrendingUp, Wallet } from 'lucide-react';
 import { loansApi, type LoanDetail } from '../../api/loans';
+import { investmentsApi, type Investment } from '../../api/investments';
 import { ApiError } from '../../api/client';
 import { useI18n } from '../../i18n/I18nContext';
 import { byCurrency, formatDate, formatMoney, formatPercent } from '../../lib/money';
@@ -9,6 +10,8 @@ import { cumulativeProgress, monthlyCollections, totalsFor } from '../../lib/loa
 import StatTile from '../../components/charts/StatTile';
 import CollectionsChart from '../../components/charts/CollectionsChart';
 import ProgressChart from '../../components/charts/ProgressChart';
+import InvestmentValueChart from '../../components/charts/InvestmentValueChart';
+import { investmentValueSeries } from '../../lib/investmentStats';
 import BalanceMeter from '../../components/charts/BalanceMeter';
 import CurrencyTabs from '../../components/loans/CurrencyTabs';
 import { AiScoreBadge, LoanStateBadge } from '../../components/loans/Badges';
@@ -21,12 +24,15 @@ import { btn, card, errorBox } from '../../components/ui/styles';
 const AdminHome = () => {
   const { t, language } = useI18n();
   const [loans, setLoans] = useState<LoanDetail[] | null>(null);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [error, setError] = useState('');
   const [currency, setCurrency] = useState('');
 
   const load = useCallback(async () => {
     try {
-      setLoans(await loansApi.listDetailed());
+      const [allLoans, allInvestments] = await Promise.all([loansApi.listDetailed(), investmentsApi.list()]);
+      setInvestments(allInvestments);
+      setLoans(allLoans);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('common.loadFailed'));
     }
@@ -39,10 +45,16 @@ const AdminHome = () => {
   useLiveUpdates(load);
 
   const groups = useMemo(() => byCurrency(loans ?? []), [loans]);
-  const currencies = [...groups.keys()];
+  const investmentGroups = useMemo(() => byCurrency(investments), [investments]);
+  // A currency with only investments still gets its tab.
+  const currencies = [...new Set([...groups.keys(), ...investmentGroups.keys()])];
   const active = currencies.includes(currency) ? currency : (currencies[0] ?? '');
   const current = groups.get(active) ?? [];
+  const currentInvestments = investmentGroups.get(active) ?? [];
   const totals = totalsFor(active, current);
+  const invested = currentInvestments.reduce((s, i) => s + i.summary.contributedCents - i.summary.withdrawnCents, 0);
+  const investmentsWorth = currentInvestments.reduce((s, i) => s + i.summary.valueTodayCents, 0);
+  const investmentInterest = currentInvestments.reduce((s, i) => s + i.summary.interestToDateCents, 0);
   const money = (cents: number) => formatMoney(cents, active, language);
   const pending = current.flatMap((l) => l.payments.filter((p) => p.status === 'pending').map((p) => ({ loan: l, payment: p })));
 
@@ -66,7 +78,7 @@ const AdminHome = () => {
         <CurrencyTabs currencies={currencies} value={active} onChange={setCurrency} />
       </div>
 
-      {loans.length === 0 ? (
+      {loans.length === 0 && investments.length === 0 ? (
         <div className={`${card} flex flex-col items-center gap-3 p-12 text-center`}>
           <PiggyBank size={40} className="text-[var(--accent-500)]" />
           <p className="font-medium text-slate-900 dark:text-slate-100">{t('home.noLoansTitle')}</p>
@@ -77,7 +89,7 @@ const AdminHome = () => {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             <StatTile
               icon={Banknote}
               label={t('home.lent')}
@@ -91,10 +103,22 @@ const AdminHome = () => {
               hint={t('home.percentOfTotal', { percent: formatPercent(totals.percentPaid, language) })}
             />
             <StatTile
+              icon={PiggyBank}
+              label={t('home.invested')}
+              value={money(invested)}
+              hint={t('home.investedHint', { amount: money(investmentsWorth) })}
+              tone="bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
+            />
+            {/* All interest income, whether it came from loans or grew inside investments. */}
+            <StatTile
               icon={TrendingUp}
               label={t('home.interestEarned')}
-              value={money(totals.interestCollectedCents)}
-              hint={t('home.ofExpected', { amount: money(totals.expectedInterestCents) })}
+              value={money(totals.interestCollectedCents + investmentInterest)}
+              hint={
+                currentInvestments.length > 0
+                  ? t('home.interestSplit', { loans: money(totals.interestCollectedCents), investments: money(investmentInterest) })
+                  : t('home.ofExpected', { amount: money(totals.expectedInterestCents) })
+              }
               tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"
             />
             <StatTile
@@ -125,10 +149,78 @@ const AdminHome = () => {
             />
           </section>
 
+          {/* Loans on top, investments below. Always shown, even empty, so switching currency never reflows the page. */}
           <div className="grid gap-6 xl:grid-cols-2">
             <CollectionsChart data={monthlyCollections(current)} currency={active} />
             <ProgressChart data={cumulativeProgress(current)} currency={active} />
           </div>
+          <InvestmentValueChart data={investmentValueSeries(currentInvestments)} currency={active} />
+
+          {current.length > 0 && (
+            <section className={`${card} p-5`}>
+              <h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+                <Banknote size={17} className="text-[var(--series-principal)]" /> {t('home.loansTitle')}
+              </h3>
+              {/* Same card as the investments below: reads well on a phone and on a wide screen alike. */}
+              <ul className="mt-3 grid gap-3 md:grid-cols-2">
+                {current.map((loan) => {
+                  const next =
+                    loan.summary.nextInstallment && loan.summary.state !== 'cancelled' && loan.summary.state !== 'paid'
+                      ? loan.summary.nextInstallment
+                      : null;
+                  return (
+                    <li key={loan.id}>
+                      <Link
+                        to={`/users-manager/${loan.borrower_id}`}
+                        className="block rounded-lg border border-slate-200 p-4 transition hover:border-[var(--accent-300)] hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Avatar user={loan.borrower} size={32} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-slate-900 dark:text-slate-100">
+                              {loan.borrower.display_name ?? loan.borrower.username}
+                            </p>
+                            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                              {loan.title} · {formatPercent(loan.interest_rate, language)}{' '}
+                              {t(loan.rate_period === 'annual' ? 'loans.perYearShort' : 'loans.perMonthShort')}
+                            </p>
+                          </div>
+                          <LoanStateBadge state={loan.summary.state} />
+                          <ChevronRight size={16} className="shrink-0 text-slate-400" />
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.principal')}</dt>
+                            <dd className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{money(loan.principal_cents)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.nextPayment')}</dt>
+                            <dd className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+                              {next ? money(next.amountDueCents) : '—'}
+                              {next && (
+                                <span className="ml-1.5 text-xs font-normal text-slate-500 dark:text-slate-400">
+                                  {formatDate(next.dueOn, language)}
+                                </span>
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--series-track)]">
+                            <div className="h-full rounded-full bg-[var(--series-principal)]" style={{ width: `${loan.summary.percentPaid}%` }} />
+                          </div>
+                          <span className="w-12 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                            {formatPercent(loan.summary.percentPaid, language)}
+                          </span>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
 
           {pending.length > 0 && (
             <section className={`${card} p-5`}>
@@ -159,131 +251,45 @@ const AdminHome = () => {
             </section>
           )}
 
-          <section className={`${card} overflow-hidden`}>
-            <h3 className="px-5 pt-5 font-semibold text-slate-900 dark:text-slate-100">{t('home.loansTitle')}</h3>
-            {/* Phones: one card per loan — the table below needs more width than a phone has. */}
-            <ul className="mt-3 divide-y divide-slate-100 border-t border-slate-200 md:hidden dark:divide-slate-800 dark:border-slate-800">
-              {current.map((loan) => {
-                const next =
-                  loan.summary.nextInstallment && loan.summary.state !== 'cancelled' && loan.summary.state !== 'paid'
-                    ? loan.summary.nextInstallment
-                    : null;
-                return (
-                  <li key={loan.id}>
+          {currentInvestments.length > 0 && (
+            <section className={`${card} p-5`}>
+              <h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
+                <TrendingUp size={17} className="text-violet-500" /> {t('home.investmentsTitle')}
+              </h3>
+              <ul className="mt-3 grid gap-3 md:grid-cols-2">
+                {currentInvestments.map((inv) => (
+                  <li key={inv.id}>
                     <Link
-                      to={`/users-manager/${loan.borrower_id}`}
-                      className="block px-5 py-4 transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      to={`/users-manager/${inv.owner_id}`}
+                      className="block rounded-lg border border-slate-200 p-4 transition hover:border-[var(--accent-300)] hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                     >
-                      <div className="flex items-start gap-3">
-                        <Avatar user={loan.borrower} size={36} />
+                      <div className="flex items-center gap-3">
+                        <Avatar user={inv.owner} size={32} />
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="truncate font-medium text-slate-900 dark:text-slate-100">
-                              {loan.borrower.display_name ?? loan.borrower.username}
-                            </p>
-                            <LoanStateBadge state={loan.summary.state} />
-                          </div>
-                          <p className="truncate text-sm text-slate-600 dark:text-slate-300">{loan.title}</p>
+                          <p className="truncate font-medium text-slate-900 dark:text-slate-100">{inv.owner.display_name ?? inv.owner.username}</p>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {inv.title} · {formatPercent(inv.interest_rate, language)}{' '}
+                            {t(inv.rate_period === 'annual' ? 'loans.perYearShort' : 'loans.perMonthShort')}
+                          </p>
                         </div>
+                        <ChevronRight size={16} className="text-slate-400" />
                       </div>
-
-                      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.principal')}</dt>
-                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">{money(loan.principal_cents)}</dd>
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('investments.valueToday')}</dt>
+                          <dd className="font-semibold tabular-nums text-slate-900 dark:text-slate-100">{money(inv.summary.valueTodayCents)}</dd>
                         </div>
                         <div>
-                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.rate')}</dt>
-                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
-                            {formatPercent(loan.interest_rate, language)}{' '}
-                            {t(loan.rate_period === 'annual' ? 'loans.perYearShort' : 'loans.perMonthShort')}
-                          </dd>
-                        </div>
-                        <div className="col-span-2">
-                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('loans.nextPayment')}</dt>
-                          <dd className="font-medium tabular-nums text-slate-900 dark:text-slate-100">
-                            {next ? `${money(next.amountDueCents)} · ${formatDate(next.dueOn, language)}` : '—'}
-                          </dd>
+                          <dt className="text-xs text-slate-500 dark:text-slate-400">{t('investments.interestToDate')}</dt>
+                          <dd className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{money(inv.summary.interestToDateCents)}</dd>
                         </div>
                       </dl>
-
-                      <div className="mt-3 flex items-center gap-2">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--series-track)]">
-                          <div className="h-full rounded-full bg-[var(--series-principal)]" style={{ width: `${loan.summary.percentPaid}%` }} />
-                        </div>
-                        <span className="w-12 text-right text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                          {formatPercent(loan.summary.percentPaid, language)}
-                        </span>
-                      </div>
                     </Link>
                   </li>
-                );
-              })}
-            </ul>
-
-            <div className="mt-3 hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead className="border-y border-slate-200 bg-slate-50 text-left text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-400">
-                  <tr>
-                    <th className="px-5 py-2.5 font-medium">{t('loans.borrower')}</th>
-                    <th className="px-3 py-2.5 font-medium">{t('loans.title')}</th>
-                    <th className="px-3 py-2.5 text-right font-medium">{t('loans.principal')}</th>
-                    <th className="px-3 py-2.5 text-right font-medium">{t('loans.rate')}</th>
-                    <th className="w-48 px-3 py-2.5 font-medium">{t('loans.progress')}</th>
-                    <th className="px-3 py-2.5 font-medium">{t('loans.nextPayment')}</th>
-                    <th className="px-5 py-2.5 font-medium">{t('loans.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {current.map((loan) => (
-                    <tr key={loan.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
-                      <td className="px-5 py-3">
-                        <Link to={`/users-manager/${loan.borrower_id}`} className="flex items-center gap-2.5 hover:underline">
-                          <Avatar user={loan.borrower} size={28} />
-                          <span className="font-medium text-slate-900 dark:text-slate-100">
-                            {loan.borrower.display_name ?? loan.borrower.username}
-                          </span>
-                        </Link>
-                      </td>
-                      <td className="px-3 py-3 text-slate-700 dark:text-slate-200">{loan.title}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">{money(loan.principal_cents)}</td>
-                      <td className="px-3 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                        {formatPercent(loan.interest_rate, language)} {t(loan.rate_period === 'annual' ? 'loans.perYearShort' : 'loans.perMonthShort')}
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--series-track)]">
-                            <div
-                              className="h-full rounded-full bg-[var(--series-principal)]"
-                              style={{ width: `${loan.summary.percentPaid}%` }}
-                            />
-                          </div>
-                          <span className="w-12 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
-                            {formatPercent(loan.summary.percentPaid, language)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-slate-700 dark:text-slate-200">
-                        {loan.summary.nextInstallment && loan.summary.state !== 'cancelled' && loan.summary.state !== 'paid' ? (
-                          <>
-                            <span className="tabular-nums">{money(loan.summary.nextInstallment.amountDueCents)}</span>
-                            <span className="block text-xs text-slate-500 dark:text-slate-400">
-                              {formatDate(loan.summary.nextInstallment.dueOn, language)}
-                            </span>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-5 py-3">
-                        <LoanStateBadge state={loan.summary.state} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>
