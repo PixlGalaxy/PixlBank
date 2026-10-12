@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from '../api/client';
 import type { User } from '../api/types';
+import { disablePush } from '../lib/push';
 
 interface AuthContextValue {
   user: User | null;
@@ -52,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Whoever signs in next on this phone must not get this account's notifications.
+    await disablePush().catch(() => undefined);
     try {
       await api.post('/auth/logout');
     } catch (err) {

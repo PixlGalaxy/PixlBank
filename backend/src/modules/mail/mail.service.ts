@@ -7,6 +7,7 @@ import type { SettingsService } from '../../db/settings.js';
 import { SUPPORTED_LANGUAGES, isLanguage, type EmailTranslate } from '../../i18n/index.js';
 import { SETTINGS_KEYS } from '../admin/settings-keys.js';
 import { logger } from '../../logger.js';
+import type { PushService } from '../push/push.service.js';
 import {
   EMAIL_KINDS,
   SAMPLE_VARS,
@@ -50,6 +51,8 @@ export interface Recipient {
   email: string;
   name: string;
   language: string;
+  /** Their account, when there is one: the email then also goes out as a push to their devices. */
+  userId?: string;
 }
 
 interface EmailLogRow {
@@ -97,6 +100,7 @@ export class MailService {
     private settings: SettingsService,
     private config: EnvConfig,
     private te: EmailTranslate,
+    private push: PushService,
   ) {}
 
   getConfig(): SmtpConfig {
@@ -289,13 +293,14 @@ export class MailService {
     kind: string,
     meta: LogMeta,
   ): Promise<void> {
+    const { subject, text, html } = rendered;
     const c = this.getConfig();
     if (!this.isConfigured()) {
       this.log(to, rendered.subject, kind, 'skipped', meta, 'SMTP is not configured');
       throw new Error('SMTP is not configured');
     }
     try {
-      await this.transport(c).sendMail({ from: c.from || c.user, to, ...rendered });
+      await this.transport(c).sendMail({ from: c.from || c.user, to, subject, text, html });
       this.log(to, rendered.subject, kind, 'sent', meta);
       logger.info(`Email "${kind}" sent to ${to}`);
     } catch (err) {
@@ -307,17 +312,28 @@ export class MailService {
   }
 
   /**
+   * The phone notification for an email: the template's title on top and its
+   * subject underneath, so editing a template changes both.
+   */
+  private pushFor(rendered: { subject: string; title: string }, kind: EmailKind) {
+    return { title: rendered.title || this.appName(), body: rendered.subject, url: '/', tag: kind };
+  }
+
+  /**
    * Fire-and-forget send from the kind's template: never throws, so a mail
    * outage can't break the action that triggered it (a payment report, a review...).
+   * The email always goes out; devices where the recipient turned notifications
+   * on get a push as well, whether or not SMTP is working.
    */
   async send(to: Recipient, kind: EmailKind, vars: Record<string, string | number>): Promise<boolean> {
-    if (!to.email) return false;
     const rendered = renderEmail(
       this.getTemplate(kind, to.language),
       { app: this.appName(), name: to.name, ...vars },
       this.appName(),
       this.appUrl(),
     );
+    if (to.userId) void this.push.notifyUser(to.userId, this.pushFor(rendered, kind));
+    if (!to.email) return false;
     try {
       await this.deliver(to.email, rendered, kind, { name: to.name, language: to.language });
       return true;
@@ -333,5 +349,13 @@ export class MailService {
     const rendered = renderEmail(this.getTemplate(kind, lang), vars, this.appName(), this.appUrl());
     if (kind !== 'test') rendered.subject = `[TEST] ${rendered.subject}`;
     await this.deliver(to, rendered, kind, { name, language: lang, isTest: true });
+  }
+
+  /** A sample notification of one kind, to one user's devices (the Admin Panel's push tests). */
+  async pushSample(userId: string, kind: EmailKind, language: string, name: string): Promise<number> {
+    const lang = isLanguage(language) ? language : 'en';
+    const rendered = renderEmail(this.getTemplate(kind, lang), this.sampleVars(kind, lang, name), this.appName(), this.appUrl());
+    const payload = this.pushFor(rendered, kind);
+    return this.push.notifyUser(userId, { ...payload, title: `[TEST] ${payload.title}`, tag: `test-${kind}` });
   }
 }

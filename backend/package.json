@@ -15,7 +15,8 @@
     "cookie-parser": "^1.4.6",
     "express": "^5.2.1",
     "maxmind": "^5.0.7",
-    "nodemailer": "^10.0.16"
+    "nodemailer": "^10.0.16",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
@@ -23,8 +24,9 @@
     "@types/cookie-parser": "^1.4.7",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.7.0",
-    "typescript": "~7.0.2",
-    "@types/nodemailer": "^8.0.2"
+    "typescript": "~7.0.2"
   }
 }

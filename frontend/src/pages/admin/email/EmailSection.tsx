@@ -5,6 +5,7 @@ import RemindersCard from './RemindersCard';
 import TestEmailsCard from './TestEmailsCard';
 import RecentEmailsCard from './RecentEmailsCard';
 import EmailTemplatesCard from './EmailTemplatesCard';
+import PushTestCard from './PushTestCard';
 
 /**
  * Everything about outgoing email: whether the server answers, how to reach it,
@@ -21,6 +22,7 @@ const EmailSection = () => {
       <SmtpConnectionCard onChanged={refresh} />
       <RemindersCard onSent={refresh} />
       <TestEmailsCard onSent={refresh} />
+      <PushTestCard />
       <RecentEmailsCard refreshKey={refreshKey} />
       <EmailTemplatesCard />
     </div>

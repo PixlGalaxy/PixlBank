@@ -31,6 +31,8 @@ import { ReceiptVerifier } from './modules/payments/receipt-verifier.js';
 import { PaymentsService } from './modules/payments/payments.service.js';
 import { createPaymentsRoutes } from './modules/payments/payments.routes.js';
 import { LiveEvents } from './modules/live/live.service.js';
+import { PushService } from './modules/push/push.service.js';
+import { createPushRoutes } from './modules/push/push.routes.js';
 import { createLiveRoutes } from './modules/live/live.routes.js';
 
 export function createApp(db: Db, config: EnvConfig): express.Application {
@@ -48,7 +50,8 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
 
   const live = new LiveEvents();
   const loans = new LoansService(db, live);
-  const mail = new MailService(db, settings, config, te);
+  const push = new PushService(db, settings, () => config.ADMIN_EMAIL);
+  const mail = new MailService(db, settings, config, te, push);
   const verifier = new ReceiptVerifier(settings, config);
   const payments = new PaymentsService(db, loans, verifier, mail, te, config.RECEIPTS_DIR);
   payments.resumePending();
@@ -114,6 +117,7 @@ export function createApp(db: Db, config: EnvConfig): express.Application {
   const { router: paymentsRoutes, receiptIpLimiter } = createPaymentsRoutes(t, config, payments);
   app.use('/api/payments', paymentsRoutes);
   app.use('/api/live', createLiveRoutes(t, live));
+  app.use('/api/push', createPushRoutes(t, push, mail));
 
   app.use(
     '/api/admin',

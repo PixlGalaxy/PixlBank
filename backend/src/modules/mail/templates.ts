@@ -147,7 +147,7 @@ export function renderEmail(
   vars: Record<string, string | number>,
   appName: string,
   appUrl: string,
-): { subject: string; text: string; html: string } {
+): { subject: string; title: string; text: string; html: string } {
   const subject = fill(template.subject, vars).replace(/[\r\n]+/g, ' ').trim();
   const title = fill(template.title, vars).trim();
   const lines = fill(template.message, vars).split('\n');
@@ -174,5 +174,5 @@ ${showButton ? `<p style="margin:24px 0 8px"><a href="${escapeHtml(appUrl)}" sty
 ${smallPrint.length ? `<div style="margin-top:24px;font-size:12px;line-height:1.5;color:#64748b">${smallPrint.map(escapeHtml).join('<br>')}</div>` : ''}
 </div></body></html>`;
 
-  return { subject, text, html };
+  return { subject, title, text, html };
 }

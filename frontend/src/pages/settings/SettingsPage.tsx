@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronDown, Eye, EyeOff, Loader2, Palette, SlidersHorizontal, Trash2, Upload, UserRound, type LucideIcon } from 'lucide-react';
+import { BellRing, ChevronDown, Eye, EyeOff, Loader2, Palette, SlidersHorizontal, Trash2, Upload, UserRound, type LucideIcon } from 'lucide-react';
 import { avatarsApi } from '../../api/users';
 import { scoreApi, type CreditScore } from '../../api/loans';
 import CreditScoreCard from '../../components/loans/CreditScore';
@@ -16,17 +16,19 @@ import Avatar from '../../components/ui/Avatar';
 import Toast from '../../components/ui/Toast';
 import ThemePicker from '../../components/ThemePicker';
 import AvatarCropModal from '../../components/AvatarCropModal';
+import NotificationsSection from './NotificationsSection';
 
-type Section = 'account' | 'appearance' | 'preferences';
+type Section = 'account' | 'appearance' | 'preferences' | 'notifications';
 
 function isSection(value: string | null): value is Section {
-  return value === 'account' || value === 'appearance' || value === 'preferences';
+  return value === 'account' || value === 'appearance' || value === 'preferences' || value === 'notifications';
 }
 
 const SECTIONS: { key: Section; icon: LucideIcon; labelKey: TranslationKey }[] = [
   { key: 'account', icon: UserRound, labelKey: 'nav.account' },
   { key: 'appearance', icon: Palette, labelKey: 'settings.appearanceTitle' },
   { key: 'preferences', icon: SlidersHorizontal, labelKey: 'settings.preferencesTitle' },
+  { key: 'notifications', icon: BellRing, labelKey: 'settings.notificationsTitle' },
 ];
 
 const sectionLinkClass = (active: boolean) =>
@@ -476,6 +478,7 @@ const SettingsPage = () => {
           {active === 'account' && <AccountSection />}
           {active === 'appearance' && <AppearanceSection />}
           {active === 'preferences' && <PreferencesSection />}
+          {active === 'notifications' && <NotificationsSection />}
         </div>
       </div>
     </div>

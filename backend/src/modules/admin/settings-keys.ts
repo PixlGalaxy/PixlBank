@@ -33,6 +33,9 @@ export const SETTINGS_KEYS = {
   smtpFrom: 'smtp_from',
   /** Accept a self-signed certificate (a mail server of your own on the LAN). */
   smtpAllowSelfSigned: 'smtp_allow_self_signed',
+  /** Web Push (VAPID) key pair, generated on first boot. */
+  vapidPublicKey: 'vapid_public_key',
+  vapidPrivateKey: 'vapid_private_key',
   /** Public URL used for links inside emails. */
   appUrl: 'app_url',
 

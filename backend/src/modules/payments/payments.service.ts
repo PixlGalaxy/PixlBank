@@ -30,7 +30,7 @@ export function formatMoney(cents: number, currency: string, language: string): 
 }
 
 function recipientOf(user: User): Recipient {
-  return { email: user.email, name: user.display_name || user.username, language: user.language };
+  return { email: user.email, name: user.display_name || user.username, language: user.language, userId: user.id };
 }
 
 /**

@@ -58,7 +58,7 @@ export class RemindersService {
     if (!user) return false;
     const language = user.language;
     const ok = await this.mail.send(
-      { email: user.email, name: user.display_name || user.username, language },
+      { email: user.email, name: user.display_name || user.username, language, userId: user.id },
       `reminder-${kind}`,
       {
         loan: loan.title,
