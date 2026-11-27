@@ -89,8 +89,13 @@ export function createLoansRoutes(
 
   // Lender registers a payment by hand (cash, transfer seen in their own bank...).
   router.post('/:id/payments', (req: AuthenticatedRequest, res) => {
-    const { amount, paidOn, note } = req.body as { amount?: unknown; paidOn?: unknown; note?: unknown };
-    payments.addManual(req.user!, routeParam(req.params.id), toCents(amount), paidOn, note);
+    const { amount, paidOn, note, coversThrough } = req.body as {
+      amount?: unknown;
+      paidOn?: unknown;
+      note?: unknown;
+      coversThrough?: unknown;
+    };
+    payments.addManual(req.user!, routeParam(req.params.id), toCents(amount), paidOn, note, coversThrough);
     res.status(201).json(loans.detail(routeParam(req.params.id)));
   });
 

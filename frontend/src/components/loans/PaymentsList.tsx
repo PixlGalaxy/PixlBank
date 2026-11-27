@@ -81,6 +81,7 @@ const PaymentsList = ({ payments, currency, isAdmin, onChanged }: Props) => {
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {formatDate(p.paid_on, language)}
                     {p.source === 'admin' && <> · {t('payments.sourceAdmin')}</>}
+                    {p.covers_through !== null && <> · {t('payments.coversShort', { n: p.covers_through })}</>}
                     {isAdmin && p.status === 'approved' && p.interest_cents > 0 && (
                       <> · {t('payments.interestPart', { amount: money(p.interest_cents) })}</>
                     )}

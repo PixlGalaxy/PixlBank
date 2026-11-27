@@ -51,6 +51,7 @@ const BACKEND_KEYS = [
   'payments.receiptInvalidType',
   'payments.receiptTooLarge',
   'payments.exceedsBalance',
+  'payments.invalidInstallment',
   'payments.noReceipt',
   'mail.notConfigured',
   'mail.sendFailed',

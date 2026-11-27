@@ -105,6 +105,7 @@ export function createPaymentsRoutes(
         fields.paidOn,
         fields.note,
         receipt && { ...receipt, fileModifiedMs: parseFileModified(fields.fileModified) },
+        fields.coversThrough,
       );
       res.status(201).json(result);
     }),

@@ -162,6 +162,7 @@ const CreditScoreCard = ({ score, forLender = false }: { score: CreditScore; for
       {showHow && (
         <ul className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
           {[
+            [t('score.fEarly'), f.early, '+5'],
             [t('score.fOnTime'), f.onTime, '+4'],
             [t('score.fSlightlyLate'), f.slightlyLate, '0'],
             [t('score.fLate'), f.late, '−4'],

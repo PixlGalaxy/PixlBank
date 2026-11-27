@@ -70,6 +70,8 @@ export interface Payment {
   loan_id: string;
   amount_cents: number;
   paid_on: string;
+  /** Installment number it covers up to; null = by its date. */
+  covers_through: number | null;
   status: PaymentStatus;
   source: 'debtor' | 'admin';
   note: string | null;
@@ -163,7 +165,7 @@ export const loansApi = {
   create: (input: LoanInput) => api.post<LoanDetail>('/loans', input),
   update: (id: string, input: Partial<LoanInput>) => api.patch<LoanDetail>(`/loans/${id}`, input),
   remove: (id: string) => api.del<void>(`/loans/${id}`),
-  addPayment: (id: string, input: { amount: number; paidOn: string; note?: string }) =>
+  addPayment: (id: string, input: { amount: number; paidOn: string; note?: string; coversThrough?: number | null }) =>
     api.post<LoanDetail>(`/loans/${id}/payments`, input),
   remind: (id: string) => api.post<{ success: true }>(`/loans/${id}/remind`),
 };
@@ -179,6 +181,7 @@ export interface CreditScore {
   noHistory: boolean;
   toNextGrade: number | null;
   factors: {
+    early: number;
     onTime: number;
     slightlyLate: number;
     late: number;
@@ -200,12 +203,20 @@ export const paymentsApi = {
   receiptUrl: (id: string) => `/backend/api/payments/${id}/receipt`,
 
   /** Multipart: the receipt image travels with the form fields. */
-  report: async (input: { loanId: string; amount: number; paidOn: string; note?: string; receipt: File }) => {
+  report: async (input: {
+    loanId: string;
+    amount: number;
+    paidOn: string;
+    note?: string;
+    coversThrough?: number | null;
+    receipt: File;
+  }) => {
     const form = new FormData();
     form.append('loanId', input.loanId);
     form.append('amount', String(input.amount));
     form.append('paidOn', input.paidOn);
     if (input.note) form.append('note', input.note);
+    if (input.coversThrough) form.append('coversThrough', String(input.coversThrough));
     // Browsers only expose a file's last-modified time, never its creation date.
     form.append('fileModified', String(input.receipt.lastModified));
     form.append('receipt', input.receipt);

@@ -6,6 +6,8 @@ import { allocate } from './loans.service.js';
 export type Grade = 'A' | 'B' | 'C' | 'D' | 'E';
 
 export interface ScoreFactors {
+  /** Paid at least EARLY_DAYS before the due date. */
+  early: number;
   onTime: number;
   slightlyLate: number;
   late: number;
@@ -34,7 +36,11 @@ export interface CreditScore {
 /** Where every debtor starts: a C, neither trusted nor distrusted. */
 const START = 60;
 
+/** How many days before the due date an installment must be paid to count as early. */
+export const EARLY_DAYS = 3;
+
 export const POINTS = {
+  early: 5,
   onTime: 4,
   slightlyLate: 0, // 1-7 days
   late: -4, // 8-30 days
@@ -70,6 +76,7 @@ export class ScoreService {
       this.db.prepare("SELECT * FROM loans WHERE borrower_id = ? AND status != 'cancelled'").all(borrowerId) as Loan[]
     ).filter((l) => l.disbursed_on <= asOf);
     const factors: ScoreFactors = {
+      early: 0,
       onTime: 0,
       slightlyLate: 0,
       late: 0,
@@ -96,7 +103,10 @@ export class ScoreService {
         if (inst.paid_on) {
           hasHistory = true;
           const late = daysBetween(inst.due_on, inst.paid_on);
-          if (late <= 0) {
+          if (late <= -EARLY_DAYS) {
+            factors.early++;
+            delta += POINTS.early;
+          } else if (late <= 0) {
             factors.onTime++;
             delta += POINTS.onTime;
           } else if (late <= 7) {
