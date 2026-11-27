@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
-import webpush, { WebPushError } from 'web-push';
+import * as webpush from 'web-push';
+import { WebPushError } from 'web-push';
 import type { Db } from '../../db/client.js';
 import type { SettingsService } from '../../db/settings.js';
 import { SETTINGS_KEYS } from '../admin/settings-keys.js';
