@@ -143,7 +143,9 @@ function periodIndex(installments: Installment[], paidOn: string, frequency: Loa
  * due date...) derives from this one pass, so nothing can drift out of sync.
  *
  * A payment first covers whatever is due up to its period's installment (see
- * `periodIndex`). Anything beyond that is a prepayment: it goes straight to
+ * `periodIndex`), or up to the one it says it covers (`covers_through`) when
+ * that's later — that's how an installment gets paid ahead of its month and
+ * counts as paid early. Anything beyond that is a prepayment: it goes straight to
  * principal — booked on the last installment covered — and the installments
  * still ahead shrink. How depends on the loan:
  *
@@ -175,7 +177,10 @@ export function allocate(loan: Loan, stored: Installment[], payments: Payment[],
   for (const payment of approved) {
     let left = payment.amount_cents;
     const split = { interest: 0, principal: 0 };
-    const lastCovered = periodIndex(installments, payment.paid_on, loan.frequency);
+    const lastCovered = Math.max(
+      periodIndex(installments, payment.paid_on, loan.frequency),
+      installments.findIndex((inst) => inst.number === payment.covers_through),
+    );
     while (left > 0 && cursor < installments.length) {
       // Past the payment's own period with money left over: a prepayment.
       if (cursor > lastCovered) {

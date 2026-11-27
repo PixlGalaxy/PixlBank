@@ -90,6 +90,19 @@ export class PaymentsService {
     return note.trim() || null;
   }
 
+  /**
+   * The installment a payment says it covers up to, or null to go by its date.
+   * Must be one of the loan's installments that isn't fully paid yet.
+   */
+  private coversThrough(loan: Loan, value: unknown): number | null {
+    if (value === undefined || value === null || value === '') return null;
+    const n = typeof value === 'string' ? Number(value) : value;
+    if (typeof n !== 'number' || !Number.isInteger(n)) throw badRequest('payments.invalidInstallment');
+    const inst = this.loans.detail(loan.id).installments.find((i) => i.number === n);
+    if (!inst || inst.state === 'paid') throw badRequest('payments.invalidInstallment');
+    return n;
+  }
+
   receiptFile(paymentId: string, viewer: User): { path: string; mime: string } {
     const payment = this.get(paymentId);
     const loan = this.loans.getRaw(payment.loan_id);
@@ -99,16 +112,25 @@ export class PaymentsService {
   }
 
   /** Lender registers a payment by hand (cash, etc.) — no receipt, approved immediately. */
-  addManual(admin: User, loanId: string, amountCents: number | null, paidOn: unknown, note: unknown): Payment {
+  addManual(
+    admin: User,
+    loanId: string,
+    amountCents: number | null,
+    paidOn: unknown,
+    note: unknown,
+    coversThrough?: unknown,
+  ): Payment {
     const loan = this.loans.getRaw(loanId);
     this.validateAmountAndDate(amountCents, paidOn);
+    const covers = this.coversThrough(loan, coversThrough);
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, status, source, note, ai_status, reviewed_by, reviewed_at, created_by)
-         VALUES (?, ?, ?, ?, 'approved', 'admin', ?, 'not_required', ?, datetime('now'), ?)`,
+        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, covers_through, status, source, note, ai_status, reviewed_by,
+           reviewed_at, created_by)
+         VALUES (?, ?, ?, ?, ?, 'approved', 'admin', ?, 'not_required', ?, datetime('now'), ?)`,
       )
-      .run(id, loan.id, amountCents, paidOn, this.cleanNote(note), admin.id, admin.id);
+      .run(id, loan.id, amountCents, paidOn, covers, this.cleanNote(note), admin.id, admin.id);
     this.loans.notifyChanged(loan);
     logger.system.info(`"${admin.username}" registered a payment of ${amountCents! / 100} ${loan.currency} on "${loan.title}"`);
     return this.get(id);
@@ -125,6 +147,7 @@ export class PaymentsService {
     paidOn: unknown,
     note: unknown,
     receipt: { buffer: Buffer; mime: string; fileModifiedMs: number | null } | null,
+    coversThrough?: unknown,
   ): Promise<{ paymentId: string }> {
     const loan = this.loans.getRaw(loanId);
     if (loan.borrower_id !== debtor.id) throw notFound();
@@ -134,6 +157,7 @@ export class PaymentsService {
     const ext = RECEIPT_EXT_BY_MIME[receipt.mime];
     if (!ext) throw badRequest('payments.receiptInvalidType');
     if (amountCents! > this.remainingCents(loan)) throw badRequest('payments.exceedsBalance');
+    const covers = this.coversThrough(loan, coversThrough);
     const cleanNote = this.cleanNote(note);
     const meta = readImageMetadata(receipt.buffer, receipt.mime, receipt.fileModifiedMs);
 
@@ -142,15 +166,16 @@ export class PaymentsService {
     await fs.writeFile(join(this.receiptsDir, file), receipt.buffer);
     this.db
       .prepare(
-        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, status, source, note, receipt_file, receipt_mime, receipt_meta,
-           ai_status, created_by)
-         VALUES (?, ?, ?, ?, 'pending', 'debtor', ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO payments (id, loan_id, amount_cents, paid_on, covers_through, status, source, note, receipt_file, receipt_mime,
+           receipt_meta, ai_status, created_by)
+         VALUES (?, ?, ?, ?, ?, 'pending', 'debtor', ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         loan.id,
         amountCents,
         paidOn,
+        covers,
         cleanNote,
         file,
         receipt.mime,

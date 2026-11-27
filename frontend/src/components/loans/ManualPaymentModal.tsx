@@ -5,6 +5,7 @@ import { ApiError } from '../../api/client';
 import { useI18n } from '../../i18n/I18nContext';
 import { formatMoney, todayIso } from '../../lib/money';
 import Modal from '../ui/Modal';
+import CoversSelect from './CoversSelect';
 import { btn, errorBox, input, label } from '../ui/styles';
 
 /** The lender records a payment received outside the app (cash, their own bank app...). Approved immediately. */
@@ -12,6 +13,9 @@ const ManualPaymentModal = ({ loan, onClose, onSaved }: { loan: LoanDetail; onCl
   const { t, language } = useI18n();
   const next = loan.summary.nextInstallment;
   const [amount, setAmount] = useState(next ? String(next.amountDueCents / 100) : '');
+  // Defaults to the next installment, matching the amount filled in above.
+  const [coversThrough, setCoversThrough] = useState<number | null>(next?.number ?? null);
+  const amountCents = Math.round(Number(amount.replace(',', '.')) * 100);
   const [paidOn, setPaidOn] = useState(todayIso());
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
@@ -22,7 +26,12 @@ const ManualPaymentModal = ({ loan, onClose, onSaved }: { loan: LoanDetail; onCl
     setError('');
     setSaving(true);
     try {
-      await loansApi.addPayment(loan.id, { amount: Number(amount.replace(',', '.')), paidOn, note: note || undefined });
+      await loansApi.addPayment(loan.id, {
+        amount: Number(amount.replace(',', '.')),
+        paidOn,
+        note: note || undefined,
+        coversThrough,
+      });
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t('common.actionFailed'));
@@ -74,6 +83,16 @@ const ManualPaymentModal = ({ loan, onClose, onSaved }: { loan: LoanDetail; onCl
             />
           </div>
         </div>
+        <CoversSelect
+          id="mp-covers"
+          loan={loan}
+          value={coversThrough}
+          amountCents={amount === '' ? NaN : amountCents}
+          onChange={(value, totalCents) => {
+            setCoversThrough(value);
+            if (totalCents !== null) setAmount(String(totalCents / 100));
+          }}
+        />
         <div>
           <label className={label} htmlFor="mp-note">
             {t('payments.note')}

@@ -6,6 +6,7 @@ import { useI18n } from '../../i18n/I18nContext';
 import { useAppConfig } from '../../context/AppConfigContext';
 import { formatMoney, todayIso } from '../../lib/money';
 import Modal from '../ui/Modal';
+import CoversSelect from './CoversSelect';
 import { btn, errorBox, input, label } from '../ui/styles';
 
 const ACCEPT = 'image/png,image/jpeg,image/webp';
@@ -23,6 +24,9 @@ const ReportPaymentModal = ({ loan, onClose, onSent }: { loan: LoanDetail; onClo
   const { receiptMaxAgeDays } = useAppConfig();
   const next = loan.summary.nextInstallment;
   const [amount, setAmount] = useState(next ? String(next.amountDueCents / 100) : '');
+  // Defaults to the next installment, matching the amount filled in above.
+  const [coversThrough, setCoversThrough] = useState<number | null>(next?.number ?? null);
+  const amountCents = Math.round(Number(amount.replace(',', '.')) * 100);
   const [paidOn, setPaidOn] = useState(todayIso());
   const [note, setNote] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -55,6 +59,7 @@ const ReportPaymentModal = ({ loan, onClose, onSent }: { loan: LoanDetail; onClo
         amount: Number(amount.replace(',', '.')),
         paidOn,
         note: note || undefined,
+        coversThrough,
         receipt: file,
       });
       onSent();
@@ -111,6 +116,18 @@ const ReportPaymentModal = ({ loan, onClose, onSent }: { loan: LoanDetail; onClo
             />
           </div>
         </div>
+
+        <CoversSelect
+          id="rp-covers"
+          loan={loan}
+          value={coversThrough}
+          amountCents={amount === '' ? NaN : amountCents}
+          disabled={sending}
+          onChange={(value, totalCents) => {
+            setCoversThrough(value);
+            if (totalCents !== null) setAmount(String(totalCents / 100));
+          }}
+        />
 
         <div>
           <span className={label}>{t('payments.receipt')}</span>

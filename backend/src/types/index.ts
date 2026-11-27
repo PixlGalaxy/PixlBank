@@ -111,6 +111,8 @@ export interface Payment {
   loan_id: string;
   amount_cents: number;
   paid_on: string;
+  /** Installment number this payment covers up to; null = by its date (the rest is a prepayment). */
+  covers_through: number | null;
   status: PaymentStatus;
   source: 'debtor' | 'admin';
   note: string | null;
